@@ -7,7 +7,7 @@ if [ -d runs/$NOW ]; then
     echo -e "ERROR: folder $NOW exists\n"
     exit 1
 else
-    mkdir $NOW
+    mkdir runs/$NOW
     echo "SUCCESS: folder $NOW created\n"
 fi
 
