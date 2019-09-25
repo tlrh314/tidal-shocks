@@ -1,0 +1,17 @@
+version: "3.7"
+
+services:
+  notebook:
+    build: .
+    image: tidalshocks
+    container_name: notebook 
+    volumes:
+      - .:/tidalshocks
+    restart: unless-stopped
+    command: ['jupyter', 'notebook', '--ip=0.0.0.0', '--port=8888', '--no-browser']
+    ports:
+      - "8888:8888"
+
+networks:
+  default:
+    name: tidalshocks
