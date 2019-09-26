@@ -11,8 +11,13 @@ RUN set -ex \
     # Install Build/Runtime dependencies ...
     && apt-get install -y --no-install-recommends \
 \
-        # ... a compiler (build)
-        build-essential gcc \
+        # AMUSE dependencies (OpenMPI)
+        build-essential gfortran python-dev \
+        libopenmpi-dev openmpi-bin \
+        libgsl-dev cmake libfftw3-3 libfftw3-dev \
+        libgmp3-dev libmpfr6 libmpfr-dev \
+        libhdf5-serial-dev hdf5-tools \
+        git \
         # ... for a proper editor: vim, that is (runtime)
         vim emacs nano \
         # ... for the healthcheck (runtime)
@@ -21,12 +26,8 @@ RUN set -ex \
         htop \
         # ... for video generation (runtime)
         ffmpeg \
-        # ... for version control (runtime)
-        git \
         # ... lapack and blas for various packages (runtime)
         liblapack3 liblapack-dev libblas3 libblas-dev \
-        # ... gsl for various packages (runtime)
-        libgsl-dev \
 \
     # Create tidalshocks user to run uWSGI as non-root
     && groupadd -g 1000 tidalshocks \
