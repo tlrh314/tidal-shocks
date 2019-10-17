@@ -10,7 +10,13 @@ def print_particleset_info(p, converter, modelname):
     Mtot = p.total_mass().as_quantity_in(units.MSun)
     Ekin = p.kinetic_energy()
     Epot = p.potential_energy()
-    pos, r0, rho0 = p.densitycentre_coreradius_coredens(unit_converter=converter)
+    try:
+        pos, r0, rho0 = p.densitycentre_coreradius_coredens(unit_converter=converter)
+        has_posr0rho0 = True
+    except CodeException as e:
+        has_posr0rho0 = False
+        if "The worker application does not exist" in str(e):
+            print("WARNING: could not start HOP worker")
 
     # It seems that the total mass in the Plummer and King models is set
     # by the mass set to the unit converter. So compute Mtotal from converter.
@@ -26,9 +32,10 @@ def print_particleset_info(p, converter, modelname):
         Epot.value_in(units.MSun*units.kms**2) ))
     print("  Virial ratio (-2*Ekin / Epot): {0}".format(-2*Ekin/Epot))
     print("  CoM (sampled): {0}".format(com))
-    print("  pos: {0}".format(pos))
-    print("  r0: {0:.2e} parsec,  rho0: {1:.2e} MSun/parsec**3".format(
-        r0.value_in(units.parsec), rho0.value_in(units.MSun/units.parsec**3)))
+    if has_posr0rho0:
+        print("  pos: {0}".format(pos))
+        print("  r0: {0:.2e} parsec,  rho0: {1:.2e} MSun/parsec**3".format(
+            r0.value_in(units.parsec), rho0.value_in(units.MSun/units.parsec**3)))
     print("")
 
 
