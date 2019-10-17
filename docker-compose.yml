@@ -7,6 +7,8 @@ services:
     container_name: notebook 
     volumes:
       - .:/tidalshocks
+      - ../supaharris:/supaharris
+      - ../supaharris-client:/supaharris-client
     restart: unless-stopped
     command: ['jupyter', 'notebook', '--ip=0.0.0.0', '--port=8888', '--no-browser']
     ports:
@@ -14,4 +16,4 @@ services:
 
 networks:
   default:
-    name: tidalshocks
+    name: supaharris

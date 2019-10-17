@@ -40,11 +40,6 @@ RUN set -ex && \
     && pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r /tidalshocks/requirements.txt
 
-RUN set -ex \
-    && git clone https://github.com/tlrh314/supaharris-client \
-    && cd supaharris-client \
-    && python setup.py install
-
 COPY . /tidalshocks
 RUN chown -R tidalshocks:tidalshocks /tidalshocks
 
