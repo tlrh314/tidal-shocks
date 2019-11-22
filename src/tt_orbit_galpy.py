@@ -1,14 +1,17 @@
+import warnings
 import numpy
 import scipy
 import scipy.linalg
 from scipy import signal
 from astropy import units
+import matplotlib
 from matplotlib import pyplot
 pyplot.style.use("tlrh")
 
 from galpy.orbit import Orbit
 from galpy.util import bovy_plot
 from galpy.util import bovy_coords
+from galpy.util import bovy_conversion
 from galpy.potential import ttensor
 from galpy.potential import MWPotential2014
 from galpy.potential import evaluatePotentials
@@ -27,6 +30,27 @@ def integrate_and_print_info(o, ts=numpy.linspace(0.0, 100.0, 8096+1), verbose=T
     # print("Energy of the orbit: {0:.2f} (km/s)^2".format(o.E()))
 
 
+    print("  ro: {0:.1f} kpc\n  vo: {1:.1f} km/s\n  zo: {2:.1f} pc\n  solarmotion: {3} km/s\n".format(
+        o._ro, o._vo, 1000*o._zo, o._solarmotion))  # sanity check
+    print("  RA    = {0: 7.2f} deg".format(o.ra()))
+    print("  Dec   = {0: 7.2f} deg".format(o.dec()))
+    print("  dist  = {0: 7.2f} kpc".format(o.dist()))
+    print("  pmra  = {0: 7.2f} mas/yr".format(o.pmra()))
+    print("  pmdec = {0: 7.2f} mas/yr".format(o.pmdec()))
+    print("  vlos  = {0: 7.2f} km/s".format(o.vlos()))
+
+    # Galpy X=0 sits at Sun, points towards Galactic center?
+    # For Baumgardt+ 2019 X=0 sits at Galactic center, points towards Sun?
+    print("  X     = {0: 7.2f} kpc".format(o.helioX()))  # o._ro - o.helioX() to be consistent with B19
+    print("  Y     = {0: 7.2f} kpc".format(o.helioY()))
+    print("  Z     = {0: 7.2f} kpc".format(o.helioZ()))
+    print("  U     = {0: 7.2f} km/s".format(o.U()))
+    print("  V     = {0: 7.2f} km/s".format(o.V()))
+    print("  W     = {0: 7.2f} km/s".format(o.W()))
+    print("  Rper  = {0: 7.2f} kpc".format(o.rperi()))
+    print("  Rapo  = {0: 7.2f} kpc".format(o.rap()))
+
+
 def plot_orbit_xyz(o, t=None, fig=None):
     if not fig:
         fig = pyplot.figure(figsize=(6, 10))
@@ -37,7 +61,7 @@ def plot_orbit_xyz(o, t=None, fig=None):
 
     if hasattr(o, "name"):
         s = o.name
-        if type(o.time()) == numpy.ndarray:
+        if type(o.time()) == numpy.ndarray:  # b/c o.time() is in Gyr
             s += " (t $\in$ {0:.2f} - {1:.2f} Gyr)".format(o.time()[0], o.time()[-1])
         ax1.set_title(s, fontsize=16)
 
@@ -92,7 +116,7 @@ def plot_potential(o, t=None, fig=None):
 
     if hasattr(o, "name"):
         s = o.name
-        if type(o.time()) == numpy.ndarray:
+        if type(o.time()) == numpy.ndarray:  # b/c o.time() is in Gyr
             s += r" (t $\in$ {0:.2f} - {1:.2f} Gyr)".format(o.time()[0], o.time()[-1])
         # ax1.text(s, 0.5, 1.01, ha="center", va="bottom", transform=ax1.transAxes)
         ax1.set_title(s, fontsize=16)
@@ -171,16 +195,32 @@ def plotPotentialsHack(
 
 
 def plot_ttensor(o, fig_axes=None):
-    # Calculate ttensor and the eigenvalues
-    tt = ttensor(MWPotential2014, o.R(o.time()), o.z(o.time()), t=o.time())
-    eigenvals = numpy.array([scipy.linalg.eigvals(ttij) for ttij in tt.T], dtype="float128")
+    # Calculate ttensor and the eigenvalues in Galpy's natural units
+    tt = ttensor(MWPotential2014, o.R(o.t), o.z(o.t), t=o.t)
+    # ComplexWarning: Casting complex values to real discards the imaginary part
+    with warnings.catch_warnings(record=True) as w:
+        eigenvals = numpy.array([scipy.linalg.eigvals(ttij) for ttij in tt.T], dtype="float128")
+    # norm_eigenvals is sqrt(p1^2+p2^2+p3^2) where p1,p2,p3 eigenvalues of Tij
     norm_eigenvals = numpy.linalg.norm(eigenvals, axis=1)
 
     # Find peaks in Tij
+    # peaks are array indices, o.time()[peaks] gives time in Gyr,
+    # and o.t[peaks] gives time in Galpy natural units
     peaks, properties = scipy.signal.find_peaks(norm_eigenvals)  # , threshold=1e-3
+    # Time in results_half are 'unit bin'
+    results_half = scipy.signal.peak_widths(norm_eigenvals, peaks, rel_height=0.5)
+    # ttensor in Galpy's natural units --> peak properties also in natural units
+    time_range = o.time()[-1] - o.time()[0]
+    bin_to_Gyr = time_range / len(o.time())
+    Gyr_to_Myr = 1000.
+
     print("\npeaks:\n", peaks)
     print("properties:\n", properties)
     print("time:\n", o.time()[peaks])
+    print("peak_widths [Myr]:\n", results_half[0]*bin_to_Gyr*Gyr_to_Myr)
+    print("peak_heights:\n", results_half[1])
+    print("peak_left_ips [Gyr]:\n", results_half[2]*bin_to_Gyr)
+    print("peak_right_ips [Gyr]:\n", results_half[3]*bin_to_Gyr)
     print("")
 
     # And plot it
@@ -191,18 +231,18 @@ def plot_ttensor(o, fig_axes=None):
 
     if hasattr(o, "name"):
         s = o.name
-        if type(o.time()) == numpy.ndarray:
+        if type(o.time()) == numpy.ndarray:  # b/c o.time() is in Gyr
             s += r" (t $\in$ {0:.2f} - {1:.2f} Gyr)".format(o.time()[0], o.time()[-1])
         ax1.set_title(s, fontsize=22)
 
-    # What are the units? Are these calculations correct? IHaveNoIdeaWhatIamDoing
-    ax1.plot(o.time(), norm_eigenvals, label=r"$|T_{ij}|$")
-    ax1.set_ylabel(r"$|T_{ij}|$")
+    # Unit time [Gyr] for x-axis, unit ?? for y-axis
+    ax1.plot(o.time(), norm_eigenvals)
+    ax1.set_ylabel(r"sqrt($p_1^2+p_2^2+p_3^2$)", fontsize=12)
     ax1.set_xticklabels([], [])
     ax1.legend(frameon=False, fontsize=18)
 
-    ax2.plot(o.time(), o.R(o.time()), label="2D")
-    ax2.plot(o.time(), o.r(o.time()), label="3D")
+    ax2.plot(o.time(), o.R(o.t), label="R")
+    ax2.plot(o.time(), o.r(o.t), label="r")
     ax2.yaxis.tick_right()
     ax2.yaxis.set_label_position("right")
     ax2.set_ylabel(r"Radius [kpc]")
@@ -210,16 +250,16 @@ def plot_ttensor(o, fig_axes=None):
     ax2.legend(frameon=False, fontsize=18)
 
     # What's causing the spikes?
-    ax3.plot(o.time(), eigenvals[::,0], c="r", label=r"$T_{ij}$[0]")
-    ax3.plot(o.time(), eigenvals[::,1], c="g", label=r"$T_{ij}[1]$")
-    ax3.plot(o.time(), eigenvals[::,2], c="b", label=r"$T_{ij}[2]$")
+    ax3.plot(o.time(), eigenvals[::,0], c="r", label=r"$p_1$")
+    ax3.plot(o.time(), eigenvals[::,1], c="g", label=r"$p_2$")
+    ax3.plot(o.time(), eigenvals[::,2], c="b", label=r"$p_3$")
     ax3.set_ylabel(r"$T_{ij}$")
     ax3.set_xticklabels([], [])
     ax3.legend(frameon=False, fontsize=18)
 
-    ax4.plot(o.time(), o.x(o.time()), c="r", label="x")
-    ax4.plot(o.time(), o.y(o.time()), c="g", label="y")
-    ax4.plot(o.time(), o.z(o.time()), c="b", label="z")
+    ax4.plot(o.time(), o.x(o.t), c="r", label="x")
+    ax4.plot(o.time(), o.y(o.t), c="g", label="y")
+    ax4.plot(o.time(), o.z(o.t), c="b", label="z")
     ax4.axhline(0, c="k", ls="--")
     ax4.set_xlabel("Time [Gyr]")
     ax4.yaxis.tick_right()
@@ -227,14 +267,26 @@ def plot_ttensor(o, fig_axes=None):
     ax4.set_ylabel(r"Position [kpc]")
     ax4.legend(frameon=False, fontsize=18)
 
-    for ax in fig.axes:
+    for i, ax in enumerate(fig.axes):
         for peak_time in o.time()[peaks]:
             ax.axvline(peak_time, c="k", ls=":")
+            if i is 0:
+                trans = matplotlib.transforms.blended_transform_factory(
+                    ax.transData, ax.transAxes)
+                ax.text(peak_time, 1.0, "{:.2f}".format(peak_time),
+                    c="k", fontsize=10, ha="left", va="top", rotation=45, transform=trans)
+    for i, (w, y, xmin, xmax) in enumerate(zip(
+            results_half[0]*bin_to_Gyr*Gyr_to_Myr, results_half[1],
+            results_half[2]*bin_to_Gyr, results_half[3]*bin_to_Gyr
+        )):
+        ax1.hlines(y=y, xmin=xmin, xmax=xmax, color="purple", linewidth=4)
+        ax1.text(xmax, y, "{:.2f} Myr".format(w), c="k", fontsize=12,
+            ha="left", va="center", rotation=45, transform=ax1.transData)
 
-    # fig.tight_layout()
+    fig.tight_layout()
     fig.subplots_adjust(hspace=0)
 
-    return fig, peaks
+    return fig, peaks, results_half
 
 
 if __name__ == "__main__":

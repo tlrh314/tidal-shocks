@@ -221,6 +221,7 @@ tags
 .bash_history
 .cache
 .config
+.galpyrc
 .ipython/profile_default
 .jupyter
 .local
@@ -231,3 +232,4 @@ tags
 ## Project-specific folders
 notebooks
 runs
+out
