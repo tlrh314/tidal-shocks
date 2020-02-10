@@ -7,6 +7,7 @@ services:
     container_name: notebook 
     volumes:
       - .:/tidalshocks
+      - ../auriga:/auriga
       - ../supaharris:/supaharris
       - ../supaharris-client:/supaharris-client
     restart: unless-stopped
