@@ -26,6 +26,8 @@ RUN set -ex \
         htop \
         # ... for video generation (runtime)
         ffmpeg \
+        # ... for LaTeX support, pyplot and jupyter download as pdf via latex (runtime)
+        texlive texlive-latex-extra dvipng pandoc texlive-xetex \
         # ... lapack and blas for various packages (runtime)
         liblapack3 liblapack-dev libblas3 libblas-dev \
 \
