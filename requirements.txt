@@ -1,6 +1,7 @@
 amuse-framework==12.0.0
 amuse-hop==12.0.0
 astroquery
+corner
 Django==2.2.10
 colorbrewer
 colorcet
@@ -10,10 +11,11 @@ h5py
 galpy
 ipython
 jupyter
-matplotli
+matplotlib
 mpi4py 
 nose 
 numpy
 pandas
 pandoc
 Pillow
+tqdm
