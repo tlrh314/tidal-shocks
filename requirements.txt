@@ -11,6 +11,7 @@ h5py
 galpy
 ipython
 jupyter
+lxml
 matplotlib
 mpi4py 
 nose 
