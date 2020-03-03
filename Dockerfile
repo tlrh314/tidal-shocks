@@ -16,7 +16,7 @@ RUN set -ex \
         libopenmpi-dev openmpi-bin \
         libgsl-dev cmake libfftw3-3 libfftw3-dev \
         libgmp3-dev libmpfr6 libmpfr-dev \
-        libhdf5-serial-dev hdf5-tools \
+        libhdf5-serial-dev libhdf5-openmpi-dev hdf5-tools \
         git \
         # ... for a proper editor: vim, that is (runtime)
         vim emacs nano \
