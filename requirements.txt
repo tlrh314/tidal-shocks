@@ -1,5 +1,6 @@
-amuse-framework==12.0.0
-amuse-hop==12.0.0
+amuse-framework==13.1.0
+amuse-gadget2==13.1.0
+amuse-hop==13.1.0
 astro-limepy
 astroquery
 corner
