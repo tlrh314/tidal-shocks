@@ -39,7 +39,7 @@ RUN set -ex \
 COPY requirements.txt /tidalshocks/requirements.txt
 RUN set -ex && \
     pip install --upgrade pip \
-    && pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir --upgrade pip numpy \
     && pip install --no-cache-dir -r /tidalshocks/requirements.txt
 
 COPY . /tidalshocks
