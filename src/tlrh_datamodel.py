@@ -33,8 +33,9 @@ def print_particleset_info(p, converter, modelname):
     print("  Virial ratio (-2*Ekin / Epot): {0}".format(-2*Ekin/Epot))
     print("  CoM (sampled): {0}".format(com))
     if has_posr0rho0:
-        print("  pos: {0}".format(pos))
-        print("  r0: {0:.2e} parsec,  rho0: {1:.2e} MSun/parsec**3".format(
+        print("  \nOutput of densitycentre_coreradius_coredens")
+        print("    pos: {0}".format(pos))
+        print("    r0: {0:.2e} parsec,  rho0: {1:.2e} MSun/parsec**3".format(
             r0.value_in(units.parsec), rho0.value_in(units.MSun/units.parsec**3)))
     print("")
 
@@ -61,7 +62,8 @@ def get_radial_profiles(p, rmin=1e-3, rmax=1e5, N=64):
             # Get the mass M(<r) from r-dr to r for rho(r)
             rho_of_r[i] = (M_below_r[i] - M_below_r[i-1]).value_in(units.MSun)
 
-    volume = 4 * numpy.pi * (radii[:-1]**2).value_in(units.parsec**2) * dr.value_in(units.parsec)
+    volume = 4 * numpy.pi * (radii[:-1]**2).value_in(units.parsec**2) * \
+        dr.value_in(units.parsec)
     rho_of_r = (rho_of_r | units.MSun/units.parsec**3) / volume
     rho_of_r[0] = rho_of_r[1]  # good enough, no?
 
@@ -72,7 +74,7 @@ def plot_radial_profiles(p, radii, N_in_shell, M_below_r, rho_of_r,
         rmin, rmax):
 
     matplotlib.rcParams.update({"font.size": 16})
-    fig, (ax1, ax2, ax3) = pyplot.subplots(1, 3, figsize=(18, 6))
+    fig, ((ax1, ax2), (ax3, ax4)) = pyplot.subplots(2, 2, figsize=(16, 16))
 
     # Sampled number of stars
     ax1.plot(radii[:-1].value_in(units.parsec), N_in_shell,
@@ -89,7 +91,8 @@ def plot_radial_profiles(p, radii, N_in_shell, M_below_r, rho_of_r,
     ax2.set_ylabel("Mass (< r) [MSun]")
 
     # Sampled density
-    ax3.plot(radii[:-1].value_in(units.parsec), rho_of_r.value_in(units.MSun/units.parsec**3),
+    ax3.plot(radii[:-1].value_in(units.parsec),
+        rho_of_r.value_in(units.MSun/units.parsec**3),
         c="r", lw=2, drawstyle="steps-mid", label="sampled")
     ax3.set_ylim(
         0.1*numpy.mean(rho_of_r[-16:].value_in(units.MSun/units.parsec**3)),
@@ -189,7 +192,8 @@ def scatter_particles_xyz(p, draw_max=1337, unit_length=units.parsec,
     # axzy.set_aspect(1)
 
     for i, label in enumerate(labels):
-        axt.text(0.5, 0.9-0.1*i, label, fontsize=16, ha="center", va="center", transform=axt.transAxes)
+        axt.text(0.5, 0.9-0.1*i, label, fontsize=16,
+            ha="center", va="center", transform=axt.transAxes)
     fig.subplots_adjust(wspace=0, hspace=0, left=0.09, right=0.98, bottom=0.07, top=0.98)
 
     if plot_r or True:

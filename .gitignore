@@ -227,6 +227,7 @@ tags
 .local
 .mysql_history
 .pki
+.python_history
 .viminfo
 
 ## Project-specific folders

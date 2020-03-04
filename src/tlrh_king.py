@@ -3,40 +3,53 @@ import numpy
 from amuse.units import units
 from amuse.units import constants
 
-
-## Analytical
-def king_density(r, M, a):
-    return (3*M) / (4 * numpy.pi * a**3) * (1 + r**2/a**2)**(-5.0/2)
-
-
-def king_mass(r, M, a):
-    return M * ( r**3 / (r**2 + a**2)**(3.0/2) )
+from amuse.ic.kingmodel import MakeKingModel
+# AMUSE's King (1966) model implementation, but w/o particles.
+# Just want AMUSE to solve Poisson equation for King distribution function to give me
+# rho(r), and MakeKingModel.poisson does just that and parks output in self.rr and self.d.
+# The mass profile M(<r) is self.zm, the scaled potential is self.psi
 
 
-def king_potential(r, M, a):
-    return -1.0*constants.G*M / (r**2 + a**2).sqrt()
+## Obtained by numerically solving Poisson's equation
+def king_density(W0):
+    king = MakeKingModel(0, W0)  # King model /w 0 particles
+    nprof, v20 = king.poisson()
+    return king.rr, king.d
+
+
+def king_mass(W0):
+    king = MakeKingModel(0, W0)  # King model /w 0 particles
+    nprof, v20 = king.poisson()
+    return king.rr, king.zm
+
+
+def king_potential(W0):
+    king = MakeKingModel(0, W0)  # King model /w 0 particles
+    nprof, v20 = king.poisson()
+    return king.rr, king.psi
 
 
 def king_velocity_dispersion(r, M, a):
-    return constants.G*M / (6 * (r**2 + a**2).sqrt())
+    king = MakeKingModel(0, W0)  # King model /w 0 particles
+    nprof, v20 = king.poisson()
+    return king.rr, king.v2
 
 
 def king_distribution_function(p, r):
-    N = len(stars)
-    M = p.total_mass().as_quantity_in(units.MSun)
-    return (24 * numpy.sqrt(2)) / (7*numpy.pi**3) * (N*a**2) / (contstants.G**5 * M**5) * E(p.x, p.v)
+    raise NotImplementedError
+    return
 
 
 def king_core_radius(a):
-    return a * numpy.sqrt( numpy.sqrt(2) - 1 )  # core radius ~ 0.64*a
+    return
 
 
 def king_half_mass_radius(a):
-    return a * numpy.sqrt( (1/0.5**(2.0/3)) - 1)  # half-mass radius ~ 1.3*a
+    return
 
 
 def king_virial_radius(a):
-    return 16.0/(3*numpy.pi) * a  # virial radius ~ 1.7*a
+    return
 
 
 ## Diagnostic / plots
