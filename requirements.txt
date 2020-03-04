@@ -4,7 +4,7 @@ amuse-hop==13.1.0
 astro-limepy
 astroquery
 corner
-Django==2.2.10
+Django==2.2.11
 colorbrewer
 colorcet
 docutils 
