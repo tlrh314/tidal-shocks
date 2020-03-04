@@ -21,4 +21,5 @@ numpy
 pandas
 pandoc
 Pillow
+pynbody
 tqdm
