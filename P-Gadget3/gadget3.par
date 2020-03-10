@@ -90,3 +90,11 @@ UnitLength_in_cm         3.085678e18        ;  1.0 pc
 UnitMass_in_g            1.989e33           ;  1.0 solar masses
 UnitVelocity_in_cm_per_s 1e5                ;  1 km/sec
 GravityConstantInternal  0
+
+% TODO 
+ArtBulkViscConst
+CourantFac
+DesNumNgb
+MaxNumNgbDeviation
+InitGasTemp
+MinGasTemp
