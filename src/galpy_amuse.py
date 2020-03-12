@@ -1,12 +1,14 @@
 import os
 import time
 import numpy
+import limepy
 import logging
 import astropy.units as u
 from matplotlib import pyplot
 from matplotlib import gridspec
 from amuse.units import units
 from amuse.units import nbody_system
+from amuse.datamodel import Particles
 from amuse.ic.plummer import new_plummer_sphere
 from amuse.community.bhtree.interface import BHTree
 from amuse.community.gadget2.interface import Gadget2
@@ -14,6 +16,20 @@ from amuse.couple import bridge
 from galpy.orbit import Orbit
 from galpy.potential import to_amuse
 from galpy.potential import MWPotential2014
+
+
+def limepy_to_amuse(W0, M=1e5, rt=3, g=1, N=1000, seed=1337, verbose=False):
+    model = limepy.limepy(W0, M=M, rt=rt, g=g, verbose=verbose)
+    particles = limepy.sample(model, N=N, seed=seed, verbose=verbose)
+    amuse = Particles(size=N)
+    amuse.x = (particles.x) | units.parsec
+    amuse.y = (particles.y) | units.parsec
+    amuse.z = (particles.z) | units.parsec
+    amuse.vx = particles.vx | units.km/units.s
+    amuse.vy = particles.vy | units.km/units.s
+    amuse.vz = particles.vz | units.km/units.s
+    amuse.mass = particles.m | units.MSun
+    return model, particles, amuse
 
 
 def setup_cluster(

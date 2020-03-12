@@ -40,7 +40,7 @@ def print_particleset_info(p, converter, modelname):
     print("")
 
 
-def get_radial_profiles(p, rmin=1e-3, rmax=1e5, N=64):
+def get_radial_profiles(p, rmin=1e-2, rmax=1e3, N=256):
     """ Generate radial profile of Particleset p """
 
     # Particle radius
@@ -70,11 +70,17 @@ def get_radial_profiles(p, rmin=1e-3, rmax=1e5, N=64):
     return radii, N_in_shell, M_below_r, rho_of_r
 
 
-def plot_radial_profiles(p, radii, N_in_shell, M_below_r, rho_of_r,
-        rmin, rmax):
+def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r,
+        rmin=1e-2, rmax=1e3, fig=None, has_tex=True):
+
+    if not has_tex:
+        matplotlib.rcParams.update({"text.usetex": False})
 
     matplotlib.rcParams.update({"font.size": 16})
-    fig, ((ax1, ax2), (ax3, ax4)) = pyplot.subplots(2, 2, figsize=(16, 16))
+    if fig is None:
+        fig, ((ax1, ax2), (ax3, ax4)) = pyplot.subplots(2, 2, figsize=(16, 16))
+    else:
+        ax1, ax2, ax3, ax4 = fig.axes
 
     # Sampled number of stars
     ax1.plot(radii[:-1].value_in(units.parsec), N_in_shell,
@@ -94,20 +100,20 @@ def plot_radial_profiles(p, radii, N_in_shell, M_below_r, rho_of_r,
     ax3.plot(radii[:-1].value_in(units.parsec),
         rho_of_r.value_in(units.MSun/units.parsec**3),
         c="r", lw=2, drawstyle="steps-mid", label="sampled")
-    ax3.set_ylim(
-        0.1*numpy.mean(rho_of_r[-16:].value_in(units.MSun/units.parsec**3)),
-        1.2*rho_of_r[0].value_in(units.MSun/units.parsec**3)
-    )
+    # ax3.set_ylim(
+    #     0.1*numpy.mean(rho_of_r[-16:].value_in(units.MSun/units.parsec**3)),
+    #     1.2*rho_of_r[0].value_in(units.MSun/units.parsec**3)
+    # )
     ax3.set_xscale("log")
     ax3.set_yscale("log")
     ax3.set_xlabel("Radius [parsec]")
-    ax3.set_ylabel("Density")
+    ax3.set_ylabel("Density [MSun / parsec**3]")
 
-    for ax in [ax1, ax2, ax3]:
+    for ax in [ax1, ax2, ax3, ax4]:
         ax.set_xlim(rmin, rmax)
         ax.legend()
 
-    return fig, (ax1, ax2, ax3)
+    return fig, (ax1, ax2, ax3, ax4)
 
 
 def scatter_particles_xyz(p, draw_max=1337, unit_length=units.parsec,
@@ -215,8 +221,8 @@ if __name__ == "__main__":
     Nstars = 50000
     Mtotal = 30000 | units.MSun
     Rtidal = 1 | units.parsec
-    rmin = 0.1  # parsec
-    rmax = 25   # parsec
+    rmin = 1e-2  # parsec
+    rmax = 1e3   # parsec
 
     from amuse.units import nbody_system
     convert_nbody = nbody_system.nbody_to_si(Mtotal, Rtidal)
