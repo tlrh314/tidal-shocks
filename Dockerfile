@@ -40,7 +40,13 @@ COPY requirements.txt /tidalshocks/requirements.txt
 RUN set -ex && \
     pip install --upgrade pip \
     && pip install --no-cache-dir --upgrade pip numpy \
-    && pip install --no-cache-dir -r /tidalshocks/requirements.txt
+    && pip install --no-cache-dir -r /tidalshocks/requirements.txt \
+    && jupyter contrib nbextension install --system \
+    && jupyter nbextension enable execute_time/ExecuteTime \
+    && jupyter nbextension enable autosavetime/main \
+    && jupyter nbextension enable ruler/main \
+    && jupyter nbextension enable toc2/main \
+    && jupyter nbextension enable livemdpreview/livemdpreview
 
 COPY . /tidalshocks
 RUN chown -R tidalshocks:tidalshocks /tidalshocks
