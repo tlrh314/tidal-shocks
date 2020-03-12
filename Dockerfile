@@ -14,7 +14,7 @@ RUN set -ex \
         # AMUSE dependencies (OpenMPI)
         build-essential gfortran python-dev \
         libopenmpi-dev openmpi-bin \
-        libgsl-dev cmake libfftw3-3 libfftw3-dev \
+        libgsl-dev cmake libfftw3-3 libfftw3-dev libfftw3-mpi-dev \
         libgmp3-dev libmpfr6 libmpfr-dev \
         libhdf5-serial-dev libhdf5-openmpi-dev hdf5-tools \
         git \
@@ -45,6 +45,7 @@ RUN set -ex && \
 COPY . /tidalshocks
 RUN chown -R tidalshocks:tidalshocks /tidalshocks
 
+ENV SYSTYPE=Docker
 USER tidalshocks
 
 ENTRYPOINT ["/tidalshocks/entrypoint.sh"]

@@ -135,6 +135,22 @@ HDF5INCL      = -I/usr/lib/x86_64-linux-gnu/hdf5/openmpi/include  # h5stat --ver
 HDF5LIB       = -L/usr/lib/x86_64-linux-gnu/hdf5/openmpi/lib -lhdf5 -lz -lsz
 endif
 
+# Debian 10 buster, /w kernel 4.9.0-6-amd64.
+#   sudo apt-get install libopenmpi-dev libgsl-dev libfftw3-mpi-dev libhdf5-dev hdf5-tools
+ifeq ($(SYSTYPE),"Docker")
+OPT          += -DNOCALLSOFSYSTEM
+CC            = mpicc  # mpicc --version --> gcc (Debian 8.3.0-6) 8.3.0
+OPTIMIZE      = $(GADGETCFLAGS) -fopenmp -O3
+GSL_INCL      = -I/usr/include
+GSL_LIBS      = -L/usr/lib/x86_64-linux-gnu  # gsl-config --version --> 2.5
+FFTW_INCL     = -I/usr/include
+FFTW_LIBS     = -L/usr/lib/x86_64-linux-gnu  # fftw-wisdom --version --> 3.3.8
+FFTW_LIBNAMES =  -lfftw3_mpi -lfftw3_threads -lfftw3  # pkg-config --libs fftw3
+MPICHLIB      =
+HDF5INCL      = -I/usr/lib/x86_64-linux-gnu/hdf5/openmpi/include  # h5stat --version --> 1.10.4
+HDF5LIB       = -L/usr/lib/x86_64-linux-gnu/hdf5/openmpi/lib -lhdf5 -lz -lsz
+endif
+
 ifneq (HAVE_HDF5,$(findstring HAVE_HDF5,$(CONFIGVARS)))
 ifneq (LT_METAL_COOLING_WAL,$(findstring LT_METAL_COOLING_WAL,$(CONFIGVARS)))
 HDF5INCL =
