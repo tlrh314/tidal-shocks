@@ -1,4 +1,7 @@
+import time
+import copy
 import numpy
+import scipy
 import matplotlib
 from matplotlib import pyplot
 
@@ -43,8 +46,11 @@ def print_particleset_info(p, converter, modelname):
 def get_radial_profiles(p, rmin=1e-2, rmax=1e3, N=256):
     """ Generate radial profile of Particleset p """
 
+    start = time.time()
+
     # Particle radius
     p_r = (p.x**2 + p.y**2 + p.z**2).sqrt()
+    vel = (p.vx**2 + p.vy**2 + p.vz**2).sqrt().value_in(units.km/units.s)
 
     # Radii for our radial profile
     radii = numpy.logspace(numpy.log10(rmin), numpy.log10(rmax), N+1) | units.parsec
@@ -53,10 +59,15 @@ def get_radial_profiles(p, rmin=1e-2, rmax=1e3, N=256):
     N_in_shell = numpy.zeros(N)
     M_below_r = numpy.zeros(N) | units.MSun
     rho_of_r = numpy.zeros(N)
+    phi_of_r = numpy.zeros(N)
+    vel_of_r = numpy.zeros(N)
+    potential = p.potential().value_in(units.J / units.kg)
     for i, r in enumerate(radii[:-1]):
         # Count number of particles < r, and sum their mass for M(<r).
         in_shell, = numpy.where(p_r < r)
         M_below_r[i] = p[in_shell].mass.as_quantity_in(units.MSun).sum()
+        phi_of_r[i] = numpy.mean(potential[in_shell])
+        vel_of_r[i] = numpy.mean(vel[in_shell])
         N_in_shell[i] = (in_shell.size)
         if i > 0:
             # Get the mass M(<r) from r-dr to r for rho(r)
@@ -67,10 +78,12 @@ def get_radial_profiles(p, rmin=1e-2, rmax=1e3, N=256):
     rho_of_r = (rho_of_r | units.MSun/units.parsec**3) / volume
     rho_of_r[0] = rho_of_r[1]  # good enough, no?
 
-    return radii, N_in_shell, M_below_r, rho_of_r
+    print("get_radial_profiles took {0:.2f} s".format(time.time() - start))
+
+    return radii, N_in_shell, M_below_r, rho_of_r, volume, phi_of_r, vel_of_r
 
 
-def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r,
+def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r, volume, phi_of_r,
         rmin=1e-2, rmax=1e3, fig=None, has_tex=True):
 
     if not has_tex:
@@ -85,8 +98,10 @@ def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r,
     # Sampled number of stars
     ax1.plot(radii[:-1].value_in(units.parsec), N_in_shell,
         c="r", lw=2, drawstyle="steps-mid", label="sampled")
+    # ax1.plot(radii[:-1].value_in(units.parsec), phi_of_r,
+    #     c="r", lw=2, drawstyle="steps-mid", label="sampled")
     ax1.set_xscale("log")
-    ax1.set_xlabel("Radius [{0}]".format(units.parsec))
+    ax1.set_xlabel("Radius [parsec]")
     ax1.set_ylabel("Count")
 
     # Sampled mass
@@ -100,14 +115,24 @@ def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r,
     ax3.plot(radii[:-1].value_in(units.parsec),
         rho_of_r.value_in(units.MSun/units.parsec**3),
         c="r", lw=2, drawstyle="steps-mid", label="sampled")
-    # ax3.set_ylim(
-    #     0.1*numpy.mean(rho_of_r[-16:].value_in(units.MSun/units.parsec**3)),
-    #     1.2*rho_of_r[0].value_in(units.MSun/units.parsec**3)
-    # )
+    ax3.set_ylim(
+        0.1*numpy.mean(rho_of_r[-16:].value_in(units.MSun/units.parsec**3)),
+        1.2*rho_of_r[0].value_in(units.MSun/units.parsec**3)
+    )
     ax3.set_xscale("log")
     ax3.set_yscale("log")
     ax3.set_xlabel("Radius [parsec]")
     ax3.set_ylabel("Density [MSun / parsec**3]")
+
+    ax4.plot(radii[:-1].value_in(units.parsec),
+        N_in_shell/volume, c="r", lw=2,
+        drawstyle="steps-mid", label="sampled")
+    # instarmin = numpy.where(radii[:-1].value_in(units.parsec) > rmax)[0][0]
+    # ax4.set_ylim((N_in_shell/volume)[instarmin], 3*numpy.mean((N_in_shell/volume)[0:10]))
+    ax4.set_xscale("log")
+    ax4.set_yscale("log")
+    ax4.set_xlabel("Radius [parsec]")
+    ax4.set_ylabel("Number Density [1 / parsec**3]")
 
     for ax in [ax1, ax2, ax3, ax4]:
         ax.set_xlim(rmin, rmax)
@@ -239,7 +264,7 @@ if __name__ == "__main__":
     print_particleset_info(plummer, convert_nbody, "Plummer Sphere")
     a = 3*numpy.pi/16 | units.parsec  # b/c AMUSE default
 
-    radii, N_in_shell, M_below_r, rho_of_r = \
+    radii, N_in_shell, M_below_r, rho_of_r, volume = \
         get_radial_profiles(plummer, rmin=rmin, rmax=rmax, N=256)
 
     from plummer import add_plummer_radii_to_ax
@@ -248,7 +273,7 @@ if __name__ == "__main__":
 
     r_ana = numpy.logspace(-3, 4, 64) | units.parsec
     fig, (ax1, ax2, ax3) = plot_radial_profiles(
-        plummer, radii, N_in_shell, M_below_r, rho_of_r, rmin, rmax
+        plummer, radii, N_in_shell, M_below_r, rho_of_r, volume, rmin, rmax
     )
     add_plummer_mass_profile_to_ax(ax2, plummer, a, r_ana)
     add_plummer_density_profile_to_ax(ax3, plummer, a, r_ana)
