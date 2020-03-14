@@ -11,13 +11,15 @@ RUN set -ex \
     # Install Build/Runtime dependencies ...
     && apt-get install -y --no-install-recommends \
 \
-        # AMUSE dependencies (OpenMPI)
+        # ... for AMUSE (OpenMPI)
         build-essential gfortran python-dev \
         libopenmpi-dev openmpi-bin \
         libgsl-dev cmake libfftw3-3 libfftw3-dev libfftw3-mpi-dev \
         libgmp3-dev libmpfr6 libmpfr-dev \
         libhdf5-serial-dev libhdf5-openmpi-dev hdf5-tools \
         git \
+        # ... backend for matplotlib.pyplot
+        tk \ 
         # ... for a proper editor: vim, that is (runtime)
         vim emacs nano \
         # ... for the healthcheck (runtime)
