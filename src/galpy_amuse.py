@@ -18,15 +18,17 @@ from galpy.potential import to_amuse
 from galpy.potential import MWPotential2014
 
 
-def limepy_to_amuse(W0, M=1e5, rt=3, g=1, N=1000, seed=1337, verbose=False):
+def limepy_to_amuse(W0, M=1e5, rt=3, g=1, Nstars=1000, seed=1337, verbose=False):
     start = time.time()
     model = limepy.limepy(W0, M=M, rt=rt, g=g, verbose=verbose, project=True)
-    print("limepy.limepy took {0:.2f} s".format(time.time() - start))
+    if verbose:
+        print("limepy.limepy took {0:.2f} s".format(time.time() - start))
     start = time.time()
-    particles = limepy.sample(model, N=N, seed=seed, verbose=verbose)
-    print("limepy.sample took {0:.2f} s".format(time.time() - start))
+    particles = limepy.sample(model, N=Nstars, seed=seed, verbose=verbose)
+    if verbose:
+        print("limepy.sample took {0:.2f} s".format(time.time() - start))
     start = time.time()
-    amuse = Particles(size=N)
+    amuse = Particles(size=Nstars)
     amuse.x = (particles.x) | units.parsec
     amuse.y = (particles.y) | units.parsec
     amuse.z = (particles.z) | units.parsec
@@ -34,7 +36,8 @@ def limepy_to_amuse(W0, M=1e5, rt=3, g=1, N=1000, seed=1337, verbose=False):
     amuse.vy = particles.vy | units.km/units.s
     amuse.vz = particles.vz | units.km/units.s
     amuse.mass = particles.m | units.MSun
-    print("convert to AMUSE took {0:.2f} s".format(time.time() - start))
+    if verbose:
+        print("convert to AMUSE took {0:.2f} s".format(time.time() - start))
     return model, particles, amuse
 
 

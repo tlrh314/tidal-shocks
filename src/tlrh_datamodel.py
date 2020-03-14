@@ -43,31 +43,25 @@ def print_particleset_info(p, converter, modelname):
     print("")
 
 
-def get_radial_profiles(p, rmin=1e-2, rmax=1e3, N=256):
+def get_radial_profiles(p, rmin=1e-2, rmax=1e3, Nbins=256, verbose=False):
     """ Generate radial profile of Particleset p """
 
     start = time.time()
 
     # Particle radius
     p_r = (p.x**2 + p.y**2 + p.z**2).sqrt()
-    vel = (p.vx**2 + p.vy**2 + p.vz**2).sqrt().value_in(units.km/units.s)
 
     # Radii for our radial profile
-    radii = numpy.logspace(numpy.log10(rmin), numpy.log10(rmax), N+1) | units.parsec
+    radii = numpy.logspace(numpy.log10(rmin), numpy.log10(rmax), Nbins+1) | units.parsec
     dr = radii[1:] - radii[:-1]
 
-    N_in_shell = numpy.zeros(N)
-    M_below_r = numpy.zeros(N) | units.MSun
-    rho_of_r = numpy.zeros(N)
-    phi_of_r = numpy.zeros(N)
-    vel_of_r = numpy.zeros(N)
-    potential = p.potential().value_in(units.J / units.kg)
+    N_in_shell = numpy.zeros(Nbins)
+    M_below_r = numpy.zeros(Nbins) | units.MSun
+    rho_of_r = numpy.zeros(Nbins)
     for i, r in enumerate(radii[:-1]):
         # Count number of particles < r, and sum their mass for M(<r).
         in_shell, = numpy.where(p_r < r)
         M_below_r[i] = p[in_shell].mass.as_quantity_in(units.MSun).sum()
-        phi_of_r[i] = numpy.mean(potential[in_shell])
-        vel_of_r[i] = numpy.mean(vel[in_shell])
         N_in_shell[i] = (in_shell.size)
         if i > 0:
             # Get the mass M(<r) from r-dr to r for rho(r)
@@ -78,12 +72,13 @@ def get_radial_profiles(p, rmin=1e-2, rmax=1e3, N=256):
     rho_of_r = (rho_of_r | units.MSun/units.parsec**3) / volume
     rho_of_r[0] = rho_of_r[1]  # good enough, no?
 
-    print("get_radial_profiles took {0:.2f} s".format(time.time() - start))
+    if verbose:
+        print("get_radial_profiles took {0:.2f} s".format(time.time() - start))
 
-    return radii, N_in_shell, M_below_r, rho_of_r, volume, phi_of_r, vel_of_r
+    return radii[:-1], N_in_shell, M_below_r, rho_of_r, volume
 
 
-def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r, volume, phi_of_r,
+def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r, volume,
         rmin=1e-2, rmax=1e3, fig=None, has_tex=True):
 
     if not has_tex:
@@ -96,23 +91,23 @@ def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r, volume, phi_of_
         ax1, ax2, ax3, ax4 = fig.axes
 
     # Sampled number of stars
-    ax1.plot(radii[:-1].value_in(units.parsec), N_in_shell,
+    ax1.plot(radii.value_in(units.parsec), N_in_shell,
         c="r", lw=2, drawstyle="steps-mid", label="sampled")
-    # ax1.plot(radii[:-1].value_in(units.parsec), phi_of_r,
+    # ax1.plot(radii.value_in(units.parsec), phi_of_r,
     #     c="r", lw=2, drawstyle="steps-mid", label="sampled")
     ax1.set_xscale("log")
     ax1.set_xlabel("Radius [parsec]")
     ax1.set_ylabel("Count")
 
     # Sampled mass
-    ax2.plot(radii[:-1].value_in(units.parsec), M_below_r.value_in(units.MSun),
+    ax2.plot(radii.value_in(units.parsec), M_below_r.value_in(units.MSun),
         c="r", lw=2, drawstyle="steps-mid", label="sampled")
     ax2.set_xscale("log")
     ax2.set_xlabel("Radius [parsec]")
     ax2.set_ylabel("Mass (< r) [MSun]")
 
     # Sampled density
-    ax3.plot(radii[:-1].value_in(units.parsec),
+    ax3.plot(radii.value_in(units.parsec),
         rho_of_r.value_in(units.MSun/units.parsec**3),
         c="r", lw=2, drawstyle="steps-mid", label="sampled")
     ax3.set_ylim(
@@ -124,10 +119,10 @@ def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r, volume, phi_of_
     ax3.set_xlabel("Radius [parsec]")
     ax3.set_ylabel("Density [MSun / parsec**3]")
 
-    ax4.plot(radii[:-1].value_in(units.parsec),
+    ax4.plot(radii.value_in(units.parsec),
         N_in_shell/volume, c="r", lw=2,
         drawstyle="steps-mid", label="sampled")
-    # instarmin = numpy.where(radii[:-1].value_in(units.parsec) > rmax)[0][0]
+    # instarmin = numpy.where(radii.value_in(units.parsec) > rmax)[0][0]
     # ax4.set_ylim((N_in_shell/volume)[instarmin], 3*numpy.mean((N_in_shell/volume)[0:10]))
     ax4.set_xscale("log")
     ax4.set_yscale("log")
@@ -265,7 +260,7 @@ if __name__ == "__main__":
     a = 3*numpy.pi/16 | units.parsec  # b/c AMUSE default
 
     radii, N_in_shell, M_below_r, rho_of_r, volume = \
-        get_radial_profiles(plummer, rmin=rmin, rmax=rmax, N=256)
+        get_radial_profiles(plummer, rmin=rmin, rmax=rmax, Nbins=256)
 
     from plummer import add_plummer_radii_to_ax
     from plummer import add_plummer_mass_profile_to_ax
