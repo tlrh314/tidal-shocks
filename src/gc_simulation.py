@@ -58,7 +58,6 @@ class StarClusterSimulation(object):
         imatch, = numpy.where(b18["Name"] == self.gc_name)[0]
         self.b18 = b18[imatch]
 
-
     def _set_hilker2019(self):
         h19_orbits = parse_hilker_2019_orbits(self.logger)
         imatch, = numpy.where(h19_orbits["Cluster"] == self.gc_name)[0]
@@ -80,6 +79,35 @@ class StarClusterSimulation(object):
             numpy.where(deB19_fits["id"] == self.gc_name)[0][0]
         ]
         self.deB19_stitched = deB19_stitched[self.gc_name]
+
+    def add_H19_RVs_to_fig(self, fig):
+        # Radial velocity dispersion from 2018MNRAS.473.5591K
+        rv_k18, = numpy.where(self.h19_rv["type"] == "K18")
+        # Radial velocity dispersion from 2019MNRAS.482.5138B
+        rv_h19, = numpy.where(self.h19_rv["type"] == "RV")
+
+        # Proper motion dispersion from 2015ApJ...803...29W
+        pm_w15, = numpy.where(self.h19_rv["type"] == "W15")
+        # Proper motion dispersion from 2019MNRAS.482.5138B
+        pm_h19, = numpy.where(self.h19_rv["type"] == "GDR2")
+
+        ax = pyplot.gca()
+        for cut, label, c in zip([rv_k18, rv_h19, pm_w15, pm_h19],
+                ["RV K18 (MUSE)", "RV H19", "PM W15 (HST)", "PM H19 (Gaia)"],
+                ["red", "blue", "green", "orange"]):
+            ax.errorbar(
+                arcmin2parsec(self.h19_rv[cut]["radius"]/60, self.distance_kpc),
+                self.h19_rv[cut]["velocity_dispersion"], yerr=[
+                    self.h19_rv[cut]["velocity_dispersion_err_down"],
+                    self.h19_rv[cut]["velocity_dispersion_err_up"] ],
+                marker="o", c=c, ls="", ms=4, elinewidth=2,
+                markeredgewidth=2, capsize=5, label=label
+            )
+            ax.legend(loc="lower left", fontsize=16, frameon=False)
+            ax.set_xscale("log")
+            ax.set_xlabel("Radius [parsec]")
+            ax.set_ylabel("$\sigma_{1D}$ [km/s]")
+
 
     def fit_model_to_deBoer2019(self):
         x = self.deB19_stitched["rad"]
@@ -114,6 +142,20 @@ class StarClusterSimulation(object):
         (self.amuse_radii, self.amuse_N_in_shell, self.amuse_M_below_r,
          self.amuse_rho_of_r, self.amuse_volume) = get_radial_profiles(
             self.king_amuse, rmin=rmin, rmax=rmax, Nbins=Nbins, verbose=verbose)
+    def _project_amuse(self):
+        # Shamelessly copied from mgieles/limepy/limepy.py, but see
+        # 2015MNRAS.454..576G eq. 35
+        R = copy.copy(self.amuse_radii.value_in(units.parsec))
+        radii = self.amuse_radii.value_in(units.parsec)
+        rho = self.amuse_rho_of_r.value_in(units.MSun/units.parsec**3)
+        Sigma = numpy.zeros(len(self.amuse_radii))
+        for i in range(len(self.amuse_radii)-1):
+            c = (radii >= R[i])
+            r = radii[c]
+            z = numpy.sqrt(abs(r**2 - R[i]**2)) # avoid small neg. values
+            Sigma[i] = 2.0*abs(scipy.integrate.simps(rho[c], x=z))
+        self.amuse_R = R
+        self.amuse_Sigma = Sigma
 
     def add_deBoer2019_sampled_to_ax(self, ax, parm="rho",
             rmin=1e-3, rmax=1e3, Nbins=256):
@@ -137,20 +179,10 @@ class StarClusterSimulation(object):
                 c="r", lw=2, drawstyle="steps-mid", label="sampled"
             )
         elif parm == "Sigma":
-            # Shamelessly copied from mgieles/limepy/limepy.py, see
-            # 2015MNRAS.454..576G eq. 35
-            R = copy.copy(self.amuse_radii.value_in(units.parsec))
-            radii = self.amuse_radii.value_in(units.parsec)
-            rho = self.amuse_rho_of_r.value_in(units.MSun/units.parsec**3)
-            Sigma = numpy.zeros(len(self.amuse_radii))
-            for i in range(len(self.amuse_radii)-1):
-                c = (radii >= R[i])
-                r = radii[c]
-                z = numpy.sqrt(abs(r**2 - R[i]**2)) # avoid small neg. values
-                Sigma[i] = 2.0*abs(scipy.integrate.simps(rho[c], x=z))
-
-            ax.plot(R, Sigma, c="magenta", lw=2, drawstyle="steps-mid", label="sampled")
-
+            if not hasattr(self, "amuse_R"):
+                self._project_amuse()
+            ax.plot(self.amuse_R, self.amuse_Sigma, c="magenta", lw=2,
+                drawstyle="steps-mid", label="sampled")
         elif parm == "mc":
             ax.plot(self.king_model.r, self.king_model.mc)
             ax.plot(self.amuse_radii.value_in(units.parsec),
