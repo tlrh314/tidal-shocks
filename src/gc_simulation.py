@@ -1,4 +1,5 @@
 import sys
+import time
 import copy
 import logging
 
@@ -8,6 +9,14 @@ from matplotlib import pyplot
 pyplot.style.use("tlrh")
 from amuse.units import units
 
+from tlrh_profiles import (
+    limepy_wrapper,
+    minimise_chisq,
+    run_mcmc,
+    inspect_chains,
+    get_tau,
+    get_flat_samples,
+)
 from galpy_amuse import limepy_to_amuse
 from tlrh_datamodel import get_radial_profiles
 
@@ -108,11 +117,64 @@ class StarClusterSimulation(object):
             ax.set_xlabel("Radius [parsec]")
             ax.set_ylabel("$\sigma_{1D}$ [km/s]")
 
+    def fit_model_to_deBoer2019(self, mcmc=True, Nwalkers=32, Nsamples=500,
+            progress=True, mask_2BGlev=False, mask_rtie=False, verbose=False):
+        self.fit_x = self.deB19_stitched["rad"]
+        self.fit_y = self.deB19_stitched["density"]
+        self.fit_yerr = self.deB19_stitched["density_err"]
 
-    def fit_model_to_deBoer2019(self):
-        x = self.deB19_stitched["rad"]
-        y = self.deB19_stitched["density"]
-        dy = self.deB19_stitched["density_err"]
+        # Mask the data / take a sub set of the data into account
+        if mask_2BGlev:
+            # Only include data points above 2 times the background level into the fit
+            ikeep, = numpy.where(y > 2*self.deB19_fit["BGlev"])
+        if mask_rtie:
+            # Only include data points at radii below the Gaia completeness radius
+            ikeep, = numpy.where(x < self.deB19_fit["r_tie"])
+        if mask_2BGlev or mask_rtie:
+            self.fit_x = self.fit_x[ikeep]
+            self.fit_y = self.fit_y[ikeep]
+            self.fit_yerr = self.fit_yerr[ikeep]
+
+        W0_deB19 = self.deB19_fit["W_king"]
+        M_deB19 = self.deB19_fit["M_king"]
+        rt_deB19 = parsec2arcmin(self.deB19_fit["rt_king"], self.distance_kpc)
+        self.fit_labels = ["W_0", "M", "r_t"]
+        self.initial = [W0_deB19, M_deB19, rt_deB19]
+
+        # Minimise chi^2
+        if verbose: start = time.time()
+        self.soln = minimise_chisq(
+            self.initial, self.fit_x, self.fit_y, self.fit_yerr, limepy_wrapper)
+        if verbose:
+            self.logger.info("minimise_chisq took {:.2f} seconds".format(
+                time.time() - start))
+            self.logger.info("Maximum likelihood estimates for minimise_chisq:")
+            for label, mle in zip(self.fit_labels, self.soln.x):
+                self.logger.info("  {} = {:.3f}".format(label, mle))
+            self.logger.info("")
+
+        if mcmc:
+            start = time.time()
+            self.sampler = run_mcmc(
+                self.soln.x, self.fit_x, self.fit_y, self.fit_yerr, limepy_wrapper,
+                Nwalkers=Nwalkers, Nsamples=Nsamples, progress=progress)
+            if verbose:
+                self.logger.info("run_mcmc took {:.2f} seconds".format(
+                    time.time() - start))
+            # fig = inspect_chains(self.sampler, self.fit_labels)
+            self.tau = get_tau(self.sampler)
+            self.flat_samples = get_flat_samples(self.sampler, self.tau)
+
+            self.mcmc_mle = []
+            self.mcmc_err_up = []
+            self.mcmc_err_down = []
+            ndim = len(self.initial)
+            for i in range(ndim):
+                mcmc = numpy.percentile(self.flat_samples[:, i], [16, 50, 84])
+                q = numpy.diff(mcmc)
+                self.mcmc_mle.append(mcmc[1])
+                self.mcmc_err_down.append(q[0])
+                self.mcmc_err_up.append(q[1])
 
     def add_deBoer2019_to_fig(self, fig,
             show_King=False, show_Wilson=False, show_limepy=False, show_spes=False,
@@ -142,6 +204,7 @@ class StarClusterSimulation(object):
         (self.amuse_radii, self.amuse_N_in_shell, self.amuse_M_below_r,
          self.amuse_rho_of_r, self.amuse_volume) = get_radial_profiles(
             self.king_amuse, rmin=rmin, rmax=rmax, Nbins=Nbins, verbose=verbose)
+
     def _project_amuse(self):
         # Shamelessly copied from mgieles/limepy/limepy.py, but see
         # 2015MNRAS.454..576G eq. 35
@@ -203,6 +266,7 @@ class StarClusterSimulation(object):
 
 
 if __name__ == "__main__":
+    logging.getLogger("keyring").setLevel(logging.CRITICAL)
     logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format="%(message)s")
     logger = logging.getLogger(__file__)
