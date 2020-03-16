@@ -1,5 +1,6 @@
 import re
 import sys
+import platform
 
 import numpy
 import scipy
@@ -21,8 +22,7 @@ from multiprocessing import Pool
 from multiprocessing import cpu_count
 # print("{0} CPUs".format(cpu_count()))
 
-# TODO: Setup BASEDIR for Freya runs
-BASEDIR = ""
+BASEDIR = "/u/timoh/phd/" if "freya" in platform.node() else ""
 if "/limepy" not in sys.path:
     sys.path.insert(0, "{}/limepy".format(BASEDIR))
 import limepy   # using tlrh314/limepy fork
