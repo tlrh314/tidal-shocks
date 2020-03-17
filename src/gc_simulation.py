@@ -2,6 +2,7 @@ import sys
 import time
 import copy
 import logging
+import platform
 
 import numpy
 import scipy
@@ -22,10 +23,13 @@ from tlrh_profiles import (
 from galpy_amuse import limepy_to_amuse
 from tlrh_datamodel import get_radial_profiles
 
-sys.path.insert(0, "/limepy")
+BASEDIR = "/u/timoh/phd/" if "freya" in platform.node() else ""
+if "/limepy" not in sys.path:
+    sys.path.insert(0, "{}/limepy".format(BASEDIR))
 import limepy   # using tlrh314/limepy fork linked into container
 
-sys.path.insert(0, "/supaharris")
+if "/supaharris" not in sys.path:
+    sys.path.insert(0, "{}/supaharris".format(BASEDIR))
 from utils import parsec2arcmin
 from utils import arcmin2parsec
 from data.parse_harris_1996ed2010 import parse_harris1996ed2010
