@@ -1,5 +1,6 @@
 import re
 import sys
+import time
 import argparse
 import platform
 
@@ -29,11 +30,11 @@ if "/limepy" not in sys.path:
 import limepy   # using tlrh314/limepy fork
 
 
-def limepy_wrapper(x, W0, M, rt, g=1, verbose=False):
+def limepy_wrapper(x, W0, M, rt, g=1, verbose=True):
     if verbose:
         print("Limepy, W0={0:.3f}, M={1:.3e}, rt={2:.3f}, g={3:.3f}".format(
             W0, M, rt, g))
-    lime = limepy.limepy(W0, M=M, rt=rt, g=1, project=True, verbose=False)
+    lime = limepy.limepy(W0, M=M, rt=rt, g=g, project=True, verbose=False)
 
     # Interpolate the projected surface density profile to allow for arbitrary radii
     interp1d = scipy.interpolate.interp1d(lime.R, lime.Sigma)
@@ -48,23 +49,55 @@ def limepy_wrapper(x, W0, M, rt, g=1, verbose=False):
     return counts
 
 
+def spes_wrapper(x, W0, B, eta, M, rt, nrt, verbose=True):
+    # Prevent infinite loop when spes has B or eta out of bounds
+    if (0.0 > B or B > 1.0) or (0.0 > eta or eta > 1.0): return numpy.ones(len(x))
+
+    if verbose:
+        print("Spes, W0={0:.3f}, B={1:.3f}, eta={2:.3f}, M={3:.3e}, rt={4:.3f}, nrt={5:.3f}".format(
+            W0, B, eta, M, rt, nrt))
+    start = time.time()
+    spes = limepy.spes(W0, B=B, eta=eta, M=M, rt=rt, nrt=nrt, project=True, verbose=False)
+    print("spes_wrapper took {:.2f} seconds".format(time.time() - start))
+
+    # Interpolate the projected surface density profile to allow for arbitrary radii
+    interp1d = scipy.interpolate.interp1d(spes.R, spes.Sigma)
+
+    # However, interp1d needs to stay within bounds. The Limepy profile is
+    # only sampled up to the truncation radius rt, and cannot be interpolated
+    # beyond. The surface brightness profile, by construction, is zero at the
+    # truncation radius. So we set the counts to ZERO equal to small value
+    ZERO = 1e-9
+    counts = numpy.array([interp1d(xi) if xi < spes.rt else ZERO for xi in x])
+
+    return counts
+
+
 def log_likelihood(theta, x, y, yerr, model):
-    W0, M, rt = theta
-    ymodel = model(x, W0, M, rt)
-    sigma2 = yerr ** 2
+    ymodel = model(x, *theta)
+    sigma2 = yerr**2
     # Note that I added 2*numpy.pi in the logarithm of sigma2 wrt documentation
-    return -0.5 * numpy.sum((y - ymodel) ** 2 / sigma2 + numpy.log(2*numpy.pi*sigma2))
+    return -0.5 * numpy.sum((y - ymodel)**2 / sigma2 + numpy.log(2*numpy.pi*sigma2))
 
 
 def log_prior(theta):
-    W0, M, rt = theta
+    if len(theta) == 3:  # King or Wilson
+        W0, M, rt = theta
+        if 0 < W0 < 14 and 1e2 < M < 1e6 and 1 < rt < 300:
+            return 0.0
+    elif len(theta) == 4:  # Limepy
+        W0, M, rt, g = theta
+        if 0 < W0 < 14 and 1e2 < M < 1e6 and 1 < rt < 300 and 0 < g < 3.5:
+            return 0.0
+    elif len(theta) == 5:  # SPES
+        W0, B, eta, M, rt = theta
+        if 0 < W0 < 14 and 0 < B < 1 and 0 < eta < 1 and 1e2 < M < 1e6 and 1 < rt < 300:
+            return 0.0
     # TODO: why 0.0 if parameter in range, and -inf if parameter not in range?
     # The documentation shows that p(m) is 1/5.5 if -5 < m < 1/2, but this
     # method returns 0.0. That does not make much sense, does it?
     # TODO: may want lognormal weak priors rather than this business of
     # "uninformative flat priors"
-    if 0 < W0 < 14 and 1e2 < M < 1e6 and 1 < rt < 300:
-        return 0.0
     return -numpy.inf
 
 
@@ -143,25 +176,50 @@ def plot_corner(flat_samples, truths, labels):
     return fig
 
 
-def plot_results(model, sim, x, y, yerr, initial=None, ml=None, mcmc=None,
-        flat_samples=None, size=100, x0=numpy.logspace(-3, 3, 256)):
+def plot_results(sim, models=["king", "wilson", "limepy", "spes"],
+        x0=numpy.logspace(-3, 3, 256)):
     fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
     sim.add_deBoer2019_to_fig(fig)
-    ax.errorbar(x, y, yerr=yerr, fmt="ro", ms=4, capsize=0, label="Subset")
-    if initial is not None:
-        ax.plot(x0, model(x0, *initial, verbose=True),
-            c="g", lw=2, label="initial (deB19)")
-    if ml is not None:
-        ax.plot(x0, model(x0, *ml, verbose=True),
-            c="k", lw=2, label="ML")
-    if mcmc is not None:
-        ax.plot(x0, model(x0, *mcmc, verbose=True),
-            c="r", lw=2, label="Emcee")
-    if flat_samples is not None:
-        inds = numpy.random.randint(len(flat_samples), size=size)
-        for ind in inds:
-            sample = flat_samples[ind]
-            pyplot.plot(x0, model(x0, *sample[:3]), "C1", alpha=0.1)
+    ax.errorbar(sim.fit_x, sim.fit_y, yerr=sim.fit_yerr, fmt="ro",
+        ms=4, capsize=0, label="Included in fit")
+    kwargs_deB19 = {
+        "king": {
+            "label": "King (deB19), chi2={0:.1f}",
+            "c": "b", "ls": ":",  "lw": 2,
+        }, "wilson": {
+            "label": "Wilson (deB19), chi2={0:.1f}",
+            "c": "g", "ls": "-.", "lw": 2,
+        }, "limepy": {
+            "label": "Limepy (deB19), chi2={0:.1f}",
+            "c": "k", "ls": "--", "lw": 2,
+        }, "spes": {
+            "label": "SPES (deB19), chi2={0:.1f}",
+            "c": "r", "ls": "-",  "lw": 2,
+        },
+    }
+    for model in models:
+        if "initial" in sim.fit[model].keys():
+            kwargs_deB19[model]["label"] = kwargs_deB19[model]["label"].format(
+                sim.fit[model]["deB19_chi2"])
+            ax.plot(x0, sim.fit[model]["model"](x0, *sim.fit[model]["initial"]),
+                **kwargs_deB19[model])
+        if "soln" in sim.fit[model].keys():
+            ax.plot(x0, sim.fit[model]["model"](x0, *sim.fit[model]["soln"].x),
+                c="k", lw=2, alpha=0.7, label="{0} ML".format(model))
+
+            ymodel = sim.fit[model]["model"](sim.fit_x, *sim.fit[model]["soln"].x)
+            sigma2 = sim.fit_yerr**2
+            chisq = numpy.sum((sim.fit_y - ymodel)**2 / sigma2)
+            dof = len(sim.fit_x) - len(sim.fit[model]["soln"].x)
+            print(chisq, len(sim.fit_x), chisq/dof)
+        # if mcmc is not None:
+        #     ax.plot(x0, model(x0, *mcmc, verbose=True),
+        #         c="r", lw=2, label="Emcee")
+        # if flat_samples is not None:
+        #     inds = numpy.random.randint(len(flat_samples), size=size)
+        #     for ind in inds:
+        #         sample = flat_samples[ind]
+        #         pyplot.plot(x0, model(x0, *sample[:3]), "C1", alpha=0.1)
 
     ax.legend(fontsize=20)
     return fig
@@ -237,4 +295,3 @@ if __name__ == "__main__":
         "{0}mcmc_fit_{1}_{2}_{3}_{4}.png".format(outdir, args.gc_name,
             args.Nwalkers, args.Nsamples, args.Nburn_in)
     )
-

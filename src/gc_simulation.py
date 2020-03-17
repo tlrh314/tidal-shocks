@@ -11,7 +11,9 @@ from amuse.units import units
 
 from tlrh_profiles import (
     limepy_wrapper,
+    spes_wrapper,
     minimise_chisq,
+    log_likelihood,
     run_mcmc,
     inspect_chains,
     get_tau,
@@ -58,6 +60,9 @@ class StarClusterSimulation(object):
 
         # Orbital parameters for 154 MW GCs, and velocity dispersion profiles
         self._set_hilker2019()
+
+        # Placeholder to store the fit data
+        self.fit = {"king": {}, "wilson": {}, "limepy": {}, "spes": {}}
 
     def _set_harris1996(self):
         self.h96_gc = parse_harris1996ed2010(self.logger)[self.gc_name]
@@ -119,8 +124,9 @@ class StarClusterSimulation(object):
         ax.set_ylabel("$\sigma_{1D}$ [km/s]")
         ax.legend(loc="lower left", fontsize=16, frameon=False)
 
-    def fit_model_to_deBoer2019(self, mcmc=True, Nwalkers=32, Nsamples=500,
-            progress=True, mask_2BGlev=False, mask_rtie=False, verbose=False):
+    def fit_model_to_deBoer2019(self, model="king",
+            mcmc=True, Nwalkers=32, Nsamples=500, progress=True,
+            mask_2BGlev=False, mask_rtie=False, verbose=False):
         self.fit_x = self.deB19_stitched["rad"]
         self.fit_y = self.deB19_stitched["density"]
         self.fit_yerr = self.deB19_stitched["density_err"]
@@ -128,55 +134,97 @@ class StarClusterSimulation(object):
         # Mask the data / take a sub set of the data into account
         if mask_2BGlev:
             # Only include data points above 2 times the background level into the fit
-            ikeep, = numpy.where(y > 2*self.deB19_fit["BGlev"])
+            ikeep, = numpy.where(self.fit_y > 2*self.deB19_fit["BGlev"])
         if mask_rtie:
             # Only include data points at radii below the Gaia completeness radius
-            ikeep, = numpy.where(x < self.deB19_fit["r_tie"])
+            ikeep, = numpy.where(self.fit_x < self.deB19_fit["r_tie"])
         if mask_2BGlev or mask_rtie:
             self.fit_x = self.fit_x[ikeep]
             self.fit_y = self.fit_y[ikeep]
             self.fit_yerr = self.fit_yerr[ikeep]
 
-        W0_deB19 = self.deB19_fit["W_king"]
-        M_deB19 = self.deB19_fit["M_king"]
-        rt_deB19 = parsec2arcmin(self.deB19_fit["rt_king"], self.distance_kpc)
-        self.fit_labels = ["W_0", "M", "r_t"]
-        self.initial = [W0_deB19, M_deB19, rt_deB19]
+        # if model == "woolley": --> g=0
+        if model == "king":
+            W0_deB19_king = self.deB19_fit["W_king"]
+            M_deB19_king = self.deB19_fit["M_king"]
+            rt_deB19_king = parsec2arcmin(self.deB19_fit["rt_king"], self.distance_kpc)
+            self.fit["king"]["initial"] = [W0_deB19_king, M_deB19_king, rt_deB19_king]
+            self.fit["king"]["deB19_chi2"] = self.deB19_fit["chi2_king"]
+            self.fit["king"]["fit_labels"] = ["W_0", "M", "r_t"]
+            self.fit["king"]["model"] = lambda x, W0, M, rt: limepy_wrapper(x, W0, M, rt, g=1)
+        elif model == "wilson":
+            W0_deB19_wilson = self.deB19_fit["W_wil"]
+            M_deB19_wilson = self.deB19_fit["M_wil"]
+            rt_deB19_wilson = parsec2arcmin(self.deB19_fit["rt_wil"], self.distance_kpc)
+            self.fit["wilson"]["initial"] = [W0_deB19_wilson, M_deB19_wilson, rt_deB19_wilson]
+            self.fit["wilson"]["deB19_chi2"] = self.deB19_fit["chi2_wil"]
+            self.fit["wilson"]["fit_labels"] = ["W_0", "M", "r_t"]
+            self.fit["wilson"]["model"] = lambda x, W0, M, rt: limepy_wrapper(x, W0, M, rt, g=2)
+        elif model == "limepy":
+            W0_deB19_lime = self.deB19_fit["W_lime"]
+            M_deB19_lime = self.deB19_fit["M_lime"]
+            rt_deB19_lime = parsec2arcmin(self.deB19_fit["rt_lime"], self.distance_kpc)
+            g_deB19_lime = self.deB19_fit["g_lime"]
+            self.fit["limepy"]["initial"] = [W0_deB19_lime, M_deB19_lime, rt_deB19_lime, g_deB19_lime]
+            self.fit["limepy"]["deB19_chi2"] = self.deB19_fit["chi2_lime"]
+            self.fit["limepy"]["fit_labels"] = ["W_0", "M", "r_t", "g"]
+            self.fit["limepy"]["model"] = lambda x, W0, M, rt, g: limepy_wrapper(x, W0, M, rt, g=g)  # g free
+        elif model == "spes":
+            W0_deB19_spes = self.deB19_fit["W_pe"]
+            B_deB19_spes = 1 - numpy.power(10, self.deB19_fit["log1minB_pe"])
+            eta_deB19_spes = self.deB19_fit["eta_pe"]
+            M_deB19_spes = self.deB19_fit["M_pe"]
+            rt_deB19_spes = parsec2arcmin(self.deB19_fit["rt_pe"], self.distance_kpc)
+            # fpe_deB19_spes = numpy.power(10, self.deB19_fit["log_fpe"])
+            self.fit["spes"]["initial"] = [W0_deB19_spes, B_deB19_spes,
+                    eta_deB19_spes, M_deB19_spes, rt_deB19_spes]
+            self.fit["spes"]["deB19_chi2"] = self.deB19_fit["chi2_pe"]
+            self.fit["spes"]["fit_labels"] = ["W_0", "B", "eta", "M", "r_t"]
+            self.fit["spes"]["model"] = lambda x, W0, B, eta, M, rt: spes_wrapper(
+                x, W0, B, eta, M, rt, 25*self.rJ/rt)
 
         # Minimise chi^2
         if verbose: start = time.time()
-        self.soln = minimise_chisq(
-            self.initial, self.fit_x, self.fit_y, self.fit_yerr, limepy_wrapper)
+        self.fit[model]["soln"] = minimise_chisq(self.fit[model]["initial"],
+            self.fit_x, self.fit_y, self.fit_yerr, self.fit[model]["model"]
+        )
+        ding = -log_likelihood(self.fit[model]["soln"].x, self.fit_x,
+                self.fit_y, self.fit_yerr, self.fit[model]["model"])
+        print(ding)
         if verbose:
             self.logger.info("minimise_chisq took {:.2f} seconds".format(
                 time.time() - start))
             self.logger.info("Maximum likelihood estimates for minimise_chisq:")
-            for label, mle in zip(self.fit_labels, self.soln.x):
+            for label, mle in zip(self.fit[model]["fit_labels"], self.fit[model]["soln"].x):
                 self.logger.info("  {} = {:.3f}".format(label, mle))
             self.logger.info("")
 
         if mcmc:
+            self.fit[model]["mcmc_mle"] = []
+            self.fit[model]["mcmc_err_up"] = []
+            self.fit[model]["mcmc_err_down"] = []
             start = time.time()
-            self.sampler = run_mcmc(
-                self.soln.x, self.fit_x, self.fit_y, self.fit_yerr, limepy_wrapper,
+            self.fit[model]["sampler"] = run_mcmc(self.fit[model]["soln"].x,
+                self.fit_x, self.fit_y, self.fit_yerr, self.fit[model]["model"],
                 Nwalkers=Nwalkers, Nsamples=Nsamples, progress=progress)
             if verbose:
                 self.logger.info("run_mcmc took {:.2f} seconds".format(
                     time.time() - start))
-            # fig = inspect_chains(self.sampler, self.fit_labels)
-            self.tau = get_tau(self.sampler)
-            self.flat_samples = get_flat_samples(self.sampler, self.tau)
+            # fig = inspect_chains(self.fit[model]["sampler"], self.fit[model]["fit_labels"])
+            self.fit[model]["tau"] = get_tau(self.fit[model]["sampler"])
+            self.fit[model]["flat_samples"] = \
+                get_flat_samples(self.fit[model]["sampler"], self.fit[model]["tau"])
 
-            self.mcmc_mle = []
-            self.mcmc_err_up = []
-            self.mcmc_err_down = []
-            ndim = len(self.initial)
+            ndim = len(self.fit[model]["initial"])
+            self.fit[model]["mcmc_mle"] = []
+            self.fit[model]["mcmc_err_down"] = []
+            self.fit[model]["mcmc_err_up"] = []
             for i in range(ndim):
-                mcmc = numpy.percentile(self.flat_samples[:, i], [16, 50, 84])
+                mcmc = numpy.percentile(self.fit[model]["flat_samples"][:, i], [16, 50, 84])
                 q = numpy.diff(mcmc)
-                self.mcmc_mle.append(mcmc[1])
-                self.mcmc_err_down.append(q[0])
-                self.mcmc_err_up.append(q[1])
+                self.fit[model]["mcmc_mle"].append(mcmc[1])
+                self.fit[model]["mcmc_err_down"].append(q[0])
+                self.fit[model]["mcmc_err_up"].append(q[1])
 
     def add_deBoer2019_to_fig(self, fig,
             show_King=False, show_Wilson=False, show_limepy=False, show_spes=False,
