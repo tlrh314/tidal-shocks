@@ -1,8 +1,3 @@
-amuse-bhtree==13.1.0
-amuse-framework==13.1.0
-amuse-gadget2==13.1.0
-amuse-hop==13.1.0
-astro-limepy
 astroquery
 corner
 Django==2.2.11
@@ -11,7 +6,6 @@ colorcet
 docutils 
 emcee
 h5py
-galpy
 ipython
 jupyter
 jupyter_contrib_nbextensions

@@ -1,5 +1,6 @@
 import re
 import sys
+import argparse
 import platform
 
 import numpy
@@ -166,13 +167,34 @@ def plot_results(model, sim, x, y, yerr, initial=None, ml=None, mcmc=None,
     return fig
 
 
+
+def new_argument_parser():
+    args = argparse.ArgumentParser(description="Fit Limepy Profiles to deBoer+ 2019 data")
+    args.add_argument("-gc", "--gc_name", dest="gc_name", default="NGC 104",
+        type=str, help="Name of the Globular Cluster")
+    args.add_argument("-Nw", "--walkers", dest="Nwalkers", default=32,
+        type=int, help="Number of MCMC walkers")
+    args.add_argument("-Ns", "--samples", dest="Nsamples", default=5000,
+        type=int, help="Number of MCMC samples")
+    args.add_argument("-Nb", "--burn-in", dest="Nburn_in", default=500,
+        type=int, help="Number of MCMC samples to discard to burn-in the chains")
+
+    return args
+
+
 if __name__ == "__main__":
+    args, unknown = new_argument_parser().parse_known_args()
+
     import logging
     logging.getLogger("keyring").setLevel(logging.CRITICAL)
     logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
     logger = logging.getLogger(__file__)
     logger.info("Running {0}".format(__file__))
+    logger.info("  gc_name : {0}".format(args.gc_name))
+    logger.info("  Nwalkers: {0}".format(args.Nwalkers))
+    logger.info("  Nsamples: {0}".format(args.Nsamples))
+    logger.info("  Nburn_in: {0}\n".format(args.Nburn_in))
 
     if "/supaharris" not in sys.path:
         sys.path.insert(0, "{}/supaharris".format(BASEDIR))
@@ -183,24 +205,34 @@ if __name__ == "__main__":
     from gc_simulation import StarClusterSimulation
 
     # Run the MCMC fit
-    gc_name = "NGC 104"
-    sim = StarClusterSimulation(logger, gc_name)
-    sim.fit_model_to_deBoer2019(mcmc=True, Nwalkers=8, Nsamples=100)
+    sim = StarClusterSimulation(logger, args.gc_name)
+    sim.fit_model_to_deBoer2019(mcmc=True, Nwalkers=args.Nwalkers, Nsamples=args.Nsamples)
 
     # Remove more samples to burn in the walker
-    # sim.flat_samples = get_flat_samples(sim.sampler, sim.tau, discard=500)
+    sim.flat_samples = get_flat_samples(sim.sampler, sim.tau, discard=args.Nburn_in)
 
     outdir = "{0}/out/".format("/".join(os.path.abspath(__file__).split("/")[:-2]))
     pyplot.style.use("default")
     inspect_chains(sim.sampler, sim.fit_labels).savefig(
-        "{0}mcmc_chains_{1}.png".format(outdir, gc_name)
+        "{0}mcmc_chains_{1}_{2}_{3}_{4}.png".format(outdir, args.gc_name,
+            args.Nwalkers, args.Nsamples, args.Nburn_in)
     )
     plot_corner(sim.flat_samples, sim.initial, sim.fit_labels).savefig(
-        "{0}mcmc_corner_{1}.png".format(outdir, gc_name)
+        "{0}mcmc_corner_{1}_{2}_{3}_{4}.png".format(outdir, args.gc_name,
+            args.Nwalkers, args.Nsamples, args.Nburn_in)
     )
     pyplot.style.use("tlrh")
     plot_results(limepy_wrapper, sim, sim.fit_x, sim.fit_y, sim.fit_yerr,
         initial=sim.initial, ml=sim.soln.x, mcmc=sim.mcmc_mle,
         flat_samples=sim.flat_samples).savefig(
-        "{0}mcmc_fit_{1}.png".format(outdir, gc_name)
+        "{0}mcmc_fit_{1}_{2}_{3}_{4}.png".format(outdir, args.gc_name,
+            args.Nwalkers, args.Nsamples, args.Nburn_in)
     )
+
+    import pickle
+    with open("{0}{1}_{2}_{3}_{4}.p".format(outdir, args.gc_name,
+            args.Nwalkers, args.Nsamples, args.Nburn_in), "wb") as f:
+        pickle.dump(sim, f)
+    # with open("{0}{1}_{2}_{3}_{4}.p".format(outdir,  args.gc_name,
+    #         args.Nwalkers, args.Nsamples, args.Nburn_in), "rb") as f
+    #     sim = pickle.load()
