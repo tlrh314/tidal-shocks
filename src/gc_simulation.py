@@ -101,21 +101,23 @@ class StarClusterSimulation(object):
         pm_h19, = numpy.where(self.h19_rv["type"] == "GDR2")
 
         ax = pyplot.gca()
+        all_radii = arcmin2parsec(self.h19_rv["radius"]/60, self.distance_kpc)
         for cut, label, c in zip([rv_k18, rv_h19, pm_w15, pm_h19],
                 ["RV K18 (MUSE)", "RV H19", "PM W15 (HST)", "PM H19 (Gaia)"],
                 ["red", "blue", "green", "orange"]):
-            ax.errorbar(
-                arcmin2parsec(self.h19_rv[cut]["radius"]/60, self.distance_kpc),
+            radii = all_radii[cut]
+            ax.errorbar(radii,
                 self.h19_rv[cut]["velocity_dispersion"], yerr=[
                     self.h19_rv[cut]["velocity_dispersion_err_down"],
                     self.h19_rv[cut]["velocity_dispersion_err_up"] ],
                 marker="o", c=c, ls="", ms=4, elinewidth=2,
                 markeredgewidth=2, capsize=5, label=label
             )
-            ax.legend(loc="lower left", fontsize=16, frameon=False)
-            ax.set_xscale("log")
-            ax.set_xlabel("Radius [parsec]")
-            ax.set_ylabel("$\sigma_{1D}$ [km/s]")
+        ax.set_xlim(0.01*numpy.min(all_radii), 10*numpy.max(all_radii))
+        ax.set_xscale("log")
+        ax.set_xlabel("Radius [parsec]")
+        ax.set_ylabel("$\sigma_{1D}$ [km/s]")
+        ax.legend(loc="lower left", fontsize=16, frameon=False)
 
     def fit_model_to_deBoer2019(self, mcmc=True, Nwalkers=32, Nsamples=500,
             progress=True, mask_2BGlev=False, mask_rtie=False, verbose=False):
@@ -220,6 +222,8 @@ class StarClusterSimulation(object):
         self.amuse_R = R
         self.amuse_Sigma = Sigma
 
+        # Velocity dispersion profiles
+
     def add_deBoer2019_sampled_to_ax(self, ax, parm="rho",
             rmin=1e-3, rmax=1e3, Nbins=256):
         if parm not in ["rho", "Sigma", "mc"]:
@@ -239,18 +243,21 @@ class StarClusterSimulation(object):
             ax.plot(self.king_model.r, self.king_model.rho)
             ax.plot(self.amuse_radii.value_in(units.parsec),
                 self.amuse_rho_of_r.value_in(units.MSun/units.parsec**3),
-                c="r", lw=2, drawstyle="steps-mid", label="sampled"
+                c="r", lw=2, drawstyle="steps-mid", label=r"sampled $\rho(r)$"
             )
         elif parm == "Sigma":
             if not hasattr(self, "amuse_R"):
                 self._project_amuse()
             ax.plot(self.amuse_R, self.amuse_Sigma, c="magenta", lw=2,
-                drawstyle="steps-mid", label="sampled")
+                drawstyle="steps-mid", label=r"sampled $\Sigma(R)$")
         elif parm == "mc":
             ax.plot(self.king_model.r, self.king_model.mc)
             ax.plot(self.amuse_radii.value_in(units.parsec),
                 self.amuse_M_below_r.value_in(units.MSun),
-                c="r", lw=2, drawstyle="steps-mid", label="sampled")
+                c="r", lw=2, drawstyle="steps-mid", label=r"sampled $M(<r)$")
+            ax.set_xlim(0.9*self.amuse_radii.value_in(units.parsec).min(),
+                1.1*self.amuse_radii.value_in(units.parsec).max())
+            ax.set_ylim(0.2, 3*numpy.max(self.amuse_M_below_r.value_in(units.MSun)))
             ax.set_xscale("log")
             ax.set_yscale("log")
             ax.set_xlabel("Radius [parsec]")
