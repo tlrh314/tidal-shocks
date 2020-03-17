@@ -296,7 +296,20 @@ def compare_galpy_and_amuse(logger, h19_o, h19_combined, N=1,
     return o
 
 
+def new_argument_parser():
+    args = argparse.ArgumentParser(description=
+        "Integrate Nbody realisation of GC on orbit in MWPotential2014")
+    args.add_argument("-gc", "--gc_name", dest="gc_name", default="NGC 104",
+        type=str, help="Name of the Globular Cluster")
+    args.add_argument("-Np", "--particles", dest="Nstars", default=1000,
+        type=int, help="Number of particles in Nbody GC representation")
+
+    return args
+
+
 if __name__ == "__main__":
+    args, unknown = new_argument_parser().parse_known_args()
+
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format="%(message)s")
     logger = logging.getLogger(__file__)
     logger.info("Running {0}".format(__file__))
