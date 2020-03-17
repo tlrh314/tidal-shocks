@@ -208,10 +208,19 @@ if __name__ == "__main__":
     sim = StarClusterSimulation(logger, args.gc_name)
     sim.fit_model_to_deBoer2019(mcmc=True, Nwalkers=args.Nwalkers, Nsamples=args.Nsamples)
 
+    import pickle
+    outdir = "{0}/out/".format("/".join(os.path.abspath(__file__).split("/")[:-2]))
+    with open("{0}{1}_{2}_{3}_{4}.p".format(outdir, args.gc_name,
+            args.Nwalkers, args.Nsamples, args.Nburn_in), "wb") as f:
+        pickle.dump(sim, f)
+    # with open("{0}{1}_{2}_{3}_{4}.p".format(outdir,  args.gc_name,
+    #         args.Nwalkers, args.Nsamples, args.Nburn_in), "rb") as f:
+    #     sim = pickle.load(f)
+
     # Remove more samples to burn in the walker
     sim.flat_samples = get_flat_samples(sim.sampler, sim.tau, discard=args.Nburn_in)
 
-    outdir = "{0}/out/".format("/".join(os.path.abspath(__file__).split("/")[:-2]))
+    pyplot.switch_backend("agg")
     pyplot.style.use("default")
     inspect_chains(sim.sampler, sim.fit_labels).savefig(
         "{0}mcmc_chains_{1}_{2}_{3}_{4}.png".format(outdir, args.gc_name,
@@ -229,10 +238,3 @@ if __name__ == "__main__":
             args.Nwalkers, args.Nsamples, args.Nburn_in)
     )
 
-    import pickle
-    with open("{0}{1}_{2}_{3}_{4}.p".format(outdir, args.gc_name,
-            args.Nwalkers, args.Nsamples, args.Nburn_in), "wb") as f:
-        pickle.dump(sim, f)
-    # with open("{0}{1}_{2}_{3}_{4}.p".format(outdir,  args.gc_name,
-    #         args.Nwalkers, args.Nsamples, args.Nburn_in), "rb") as f
-    #     sim = pickle.load()
