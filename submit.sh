@@ -19,4 +19,8 @@
 # Wall clock limit:
 #SBATCH --time=08:00:00
 
-python src/tlrh_profiles.py -Nw 32 -Ns 50000 -Nb 1000
+# MCMC fit
+# python src/tlrh_profiles.py -gc "NGC 104" -Nw 32 -Ns 50000 -Nb 1000 
+
+# Test stability of GC in isolation
+nice -n 19 python src/galpy_amuse.py -gc "NGC 104" -T 10 -dt 5 --isolation

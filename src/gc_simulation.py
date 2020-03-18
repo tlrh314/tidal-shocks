@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 import copy
@@ -23,10 +24,10 @@ from tlrh_profiles import (
 from galpy_amuse import limepy_to_amuse
 from tlrh_datamodel import get_radial_profiles
 
-BASEDIR = "/u/timoh/phd/" if "freya" in platform.node() else ""
+BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
 if "/limepy" not in sys.path:
     sys.path.insert(0, "{}/limepy".format(BASEDIR))
-import limepy   # using tlrh314/limepy fork linked into container
+import limepy   # using tlrh314/limepy fork
 
 if "/supaharris" not in sys.path:
     sys.path.insert(0, "{}/supaharris".format(BASEDIR))
@@ -46,8 +47,17 @@ class StarClusterSimulation(object):
     def __init__(self, logger, gc_name):
         self.logger = logger
         self.gc_name = gc_name
+        self._set_outdir()
 
         self._set_observations()
+
+    def _set_outdir(self):
+        self.outdir = "{}/tidal-shocks/out/{}/".format(BASEDIR, self.gc_name)
+        if not os.path.exists(self.outdir) or not os.path.isdir(self.outdir):
+            os.mkdir(self.outdir)
+            self.logger.debug("  Created outdir {0}\n".format(self.outdir))
+        else:
+            self.logger.debug("  Using outdir: {0}\n".format(self.outdir))
 
     def _set_observations(self):
         # Various parameters
@@ -247,8 +257,9 @@ class StarClusterSimulation(object):
         W0_deB19 = self.deB19_fit["W_king"]
         M_deB19 = self.deB19_fit["M_king"]
         rt_deB19 = parsec2arcmin(self.deB19_fit["rt_king"], self.distance_kpc)
-        self.king_model, self.king_limepy_sampled, self.king_amuse = limepy_to_amuse(
-            W0_deB19, M=M_deB19, rt=rt_deB19, g=1, Nstars=Nstars, verbose=verbose
+        self.king_model, self.king_limepy_sampled, self.king_amuse, self.converter = \
+            limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=1,
+            Nstars=Nstars, verbose=verbose
         )
 
     def _set_amuse_radial_profiles(self, rmin, rmax, Nbins, verbose=False):
@@ -274,7 +285,7 @@ class StarClusterSimulation(object):
         self.amuse_R = R
         self.amuse_Sigma = Sigma
 
-        # Velocity dispersion profiles
+        # TODO: Velocity dispersion profiles
 
     def add_deBoer2019_sampled_to_ax(self, ax, parm="rho",
             rmin=1e-3, rmax=1e3, Nbins=256):
@@ -288,7 +299,9 @@ class StarClusterSimulation(object):
 
         iNstar = numpy.where(self.amuse_N_in_shell == len(self.king_amuse.x))[0][0]
         self.amuse_rt = self.amuse_radii[iNstar].value_in(units.parsec)
-        print(self.amuse_rt, self.king_model.rt)
+        # TODO: get the truncation radius from the sampled profile. Seems to differ ~5%
+        # from the 'true' value that we know from the underlying limepy model that we sample
+        # print(self.amuse_rt, self.king_model.rt)
         ax.axvline(self.amuse_rt, c="r", lw=4)
 
         if parm == "rho":
@@ -316,11 +329,14 @@ class StarClusterSimulation(object):
             ax.set_ylabel("Mass (< r) [MSun]")
 
     def __str__(self):
-        s = "{0}\n".format(self.gc_name)
+        s = "StarClusterSimulation for {0}\n".format(self.gc_name)
         s += "  R_sun: {0:.2f} kpc (Harris 1996, 2010 ed.)\n".format(
             self.distance_kpc)
         s += "  rJ:    {0:.2f} pc (Balbinot & Gieles 2018) --> {1:.2f}'\n".format(
             self.rJ_pc, self.rJ)
+        s += "\n"
+        s += "  outdir: {}".format(self.outdir)
+        s += "\n"
         return s
 
 

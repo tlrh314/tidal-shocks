@@ -258,8 +258,8 @@ if __name__ == "__main__":
         sys.path.insert(0, "{}/supaharris".format(BASEDIR))
     from utils import parsec2arcmin
 
-    if "../src" not in sys.path:
-        sys.path.insert(0, "{}../src".format(BASEDIR))
+    if "/tidal-shocks" not in sys.path:
+        sys.path.insert(0, "{}/tidal-shocks/src".format(BASEDIR))
     from gc_simulation import StarClusterSimulation
 
     # Run the MCMC fit
