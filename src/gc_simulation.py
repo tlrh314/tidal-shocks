@@ -23,6 +23,7 @@ from tlrh_profiles import (
 )
 from galpy_amuse import limepy_to_amuse
 from tlrh_datamodel import get_radial_profiles
+from tlrh_datamodel import scatter_particles_xyz
 
 BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
 if "/limepy" not in sys.path:
@@ -52,7 +53,7 @@ class StarClusterSimulation(object):
         self._set_observations()
 
     def _set_outdir(self):
-        self.outdir = "{}/tidal-shocks/out/{}/".format(BASEDIR, self.gc_name)
+        self.outdir = "{}/tidalshocks/out/{}/".format(BASEDIR, self.gc_name)
         if not os.path.exists(self.outdir) or not os.path.isdir(self.outdir):
             os.mkdir(self.outdir)
             self.logger.debug("  Created outdir {0}\n".format(self.outdir))
@@ -292,17 +293,14 @@ class StarClusterSimulation(object):
         if parm not in ["rho", "Sigma", "mc"]:
             self.logger.error("ERROR: cannot add {0} to ax".format(parm))
             return
-        if not hasattr(self, "amuse_radii"):
-            self._set_amuse_radial_profiles(rmin, rmax, Nbins)
-        if len(self.amuse_radii) != Nbins:
-            self._set_amuse_radial_profiles(rmin, rmax, Nbins)
+        self._set_amuse_radial_profiles(rmin, rmax, Nbins)
 
-        iNstar = numpy.where(self.amuse_N_in_shell == len(self.king_amuse.x))[0][0]
-        self.amuse_rt = self.amuse_radii[iNstar].value_in(units.parsec)
-        # TODO: get the truncation radius from the sampled profile. Seems to differ ~5%
-        # from the 'true' value that we know from the underlying limepy model that we sample
-        # print(self.amuse_rt, self.king_model.rt)
-        ax.axvline(self.amuse_rt, c="r", lw=4)
+        # iNstar = numpy.where(self.amuse_N_in_shell == len(self.king_amuse.x))[0][0]
+        # self.amuse_rt = self.amuse_radii[iNstar].value_in(units.parsec)
+        # # TODO: get the truncation radius from the sampled profile. Seems to differ ~5%
+        # # from the 'true' value that we know from the underlying limepy model that we sample
+        # # print(self.amuse_rt, self.king_model.rt)
+        # ax.axvline(self.amuse_rt, c="r", lw=4)
 
         if parm == "rho":
             ax.plot(self.king_model.r, self.king_model.rho)
@@ -311,8 +309,7 @@ class StarClusterSimulation(object):
                 c="r", lw=2, drawstyle="steps-mid", label=r"sampled $\rho(r)$"
             )
         elif parm == "Sigma":
-            if not hasattr(self, "amuse_R"):
-                self._project_amuse()
+            self._project_amuse()
             ax.plot(self.amuse_R, self.amuse_Sigma, c="magenta", lw=2,
                 drawstyle="steps-mid", label=r"sampled $\Sigma(R)$")
         elif parm == "mc":
@@ -327,6 +324,55 @@ class StarClusterSimulation(object):
             ax.set_yscale("log")
             ax.set_xlabel("Radius [parsec]")
             ax.set_ylabel("Mass (< r) [MSun]")
+
+    def analyse_isolation(self, rmin=1e-3, rmax=1e3, Nbins=256):
+        import glob
+        from amuse.units import units
+        from amuse.io import read_set_from_file
+        from tlrh_datamodel import print_particleset_info
+        snap_base = "{}{}_isolation_*.hdf5".format(self.outdir, self.gc_name)
+        snapshots = glob.glob(snap_base)
+        print("Found {0} snapshots".format(len(snapshots)))
+
+        # Initial conditions
+        # Plot Sigma(R) at this time step
+        fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
+        self.add_deBoer2019_to_fig(fig, show_King=True)
+        print(self.king_amuse.total_mass().value_in(units.MSun))
+        self.add_deBoer2019_sampled_to_ax(ax, parm="Sigma")
+        ax.legend(fontsize=20)
+        pyplot.savefig("{0}{1}_isolation_ICs.png".format(self.outdir, self.gc_name))
+        pyplot.show(fig)
+
+        for i, fname in enumerate(snapshots):
+            print("  Loading snapshot: {0}".format(fname))
+            Tsnap = fname.split("T=")[-1].split("_i")[0] | units.Myr
+            stars = read_set_from_file(fname, "hdf5")
+            print(stars.total_mass().as_quantity_in(units.MSun))
+            print(stars.center_of_mass().as_quantity_in(units.parsec))
+            # Tsnap = stars.get_timestamp()  # if stars.savepoint(time) would have been used
+            # However, ParticlesWithUnitsConverted does not have savepoint whereas
+            # Particles does...
+            print("  This snapshot was saved at T={0}".format(Tsnap.as_quantity_in(units.Myr)))
+            print("")
+            modelname = "King, loaded, T={0} Myr".format(Tsnap.value_in(units.Myr))
+            print_particleset_info(stars, self.converter, modelname)
+
+            self.king_amuse = stars
+            self._set_amuse_radial_profiles(rmin, rmax, Nbins)
+            self._project_amuse()
+
+            fig = scatter_particles_xyz(self.king_amuse)
+            pyplot.show(fig)
+
+            # Plot Sigma(R) at this time step
+            fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
+            self.add_deBoer2019_to_fig(fig, show_King=True)
+            self.add_deBoer2019_sampled_to_ax(ax, parm="Sigma")
+            ax.legend(fontsize=20)
+            pyplot.savefig("{0}{1}_isolation_{2:04d}.png".format(self.outdir, self.gc_name, i))
+            pyplot.show(fig)
+
 
     def __str__(self):
         s = "StarClusterSimulation for {0}\n".format(self.gc_name)

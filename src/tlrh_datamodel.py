@@ -6,6 +6,8 @@ import matplotlib
 from matplotlib import pyplot
 
 from amuse.units import units
+from amuse.support.exceptions import CodeException
+from mpi4py.MPI import Exception as MPIException
 
 
 def print_particleset_info(p, converter, modelname):
@@ -13,17 +15,21 @@ def print_particleset_info(p, converter, modelname):
     Mtot = p.total_mass().as_quantity_in(units.MSun)
     Ekin = p.kinetic_energy()
     Epot = p.potential_energy()
-    try:
-        pos, r0, rho0 = p.densitycentre_coreradius_coredens(unit_converter=converter)
-        has_posr0rho0 = True
-    except CodeException as e:
-        has_posr0rho0 = False
-        if "The worker application does not exist" in str(e):
-            print("WARNING: could not start HOP worker")
+    # try:
+    #     pos, r0, rho0 = p.densitycentre_coreradius_coredens(unit_converter=converter)
+    #     has_posr0rho0 = True
+    # except (CodeException, MPIException) as e:
+    #     has_posr0rho0 = False
+    #     if "The worker application does not exist" in str(e):
+    #         print("WARNING: could not start HOP worker")
+    has_posr0rho0 = False
 
     # It seems that the total mass in the Plummer and King models is set
     # by the mass set to the unit converter. So compute Mtotal from converter.
-    Mtotal = (converter.units[1][1]).value_in(units.MSun)
+    for i_mass, cu in enumerate(converter.units):
+    # converter.units in [length, mass, time], but order could differ
+        if str(cu[0]) == "mass": break
+    Mtotal = (converter.units[i_mass][1]).value_in(units.MSun)
 
     print("Sampled {0} stars in a {1}".format(len(p), modelname))
     print("  Mtotal (requested): {0}, Mtot (sampled): {1}".format(Mtotal, Mtot))
@@ -34,7 +40,7 @@ def print_particleset_info(p, converter, modelname):
         Epot.value_in(units.J), Epot.value_in(units.erg),
         Epot.value_in(units.MSun*units.kms**2) ))
     print("  Virial ratio (-2*Ekin / Epot): {0}".format(-2*Ekin/Epot))
-    print("  CoM (sampled): {0}".format(com))
+    print("  CoM (sampled): {0}".format(com.as_quantity_in(units.pc)))
     if has_posr0rho0:
         print("  \nOutput of densitycentre_coreradius_coredens")
         print("    pos: {0}".format(pos))

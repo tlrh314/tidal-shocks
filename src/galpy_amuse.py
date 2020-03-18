@@ -9,7 +9,10 @@ from matplotlib import pyplot
 from matplotlib import gridspec
 from amuse.units import units
 from amuse.units import nbody_system
+from amuse.io import write_set_to_file
+from amuse.io import read_set_from_file
 from amuse.datamodel import Particles
+from amuse.datamodel import ParticlesWithUnitsConverted
 from amuse.ic.plummer import new_plummer_sphere
 from amuse.community.bhtree.interface import BHTree
 from amuse.community.gadget2.interface import Gadget2
@@ -32,7 +35,8 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
 
     # Setup the Limepy model
     start = time.time()
-    model = limepy.limepy(W0, M=M, rt=rt, g=g, verbose=verbose, project=True)
+    # CAUTION, we do **not** scale here because we scale later /w converter
+    model = limepy.limepy(W0, M=1, rt=1, g=g, verbose=verbose, project=True)
     if verbose:
         print("limepy.limepy took {0:.2f} s".format(time.time() - start))
 
@@ -45,28 +49,33 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     # Move the Limepy particles into an AMUSE datamodel Particles instance
     start = time.time()
     amuse = Particles(size=Nstars)
-    amuse.x = particles.x | units.parsec
-    amuse.y = particles.y | units.parsec
-    amuse.z = particles.z | units.parsec
-    amuse.vx = particles.vx | units.km/units.s
-    amuse.vy = particles.vy | units.km/units.s
-    amuse.vz = particles.vz | units.km/units.s
-    amuse.mass = particles.m | units.MSun
+    amuse.x = particles.x | nbody_system.length
+    amuse.y = particles.y | nbody_system.length
+    amuse.z = particles.z | nbody_system.length
+    amuse.vx = particles.vx | nbody_system.length / nbody_system.time
+    amuse.vy = particles.vy | nbody_system.length / nbody_system.time
+    amuse.vz = particles.vz | nbody_system.length / nbody_system.time
+    amuse.mass = particles.m | nbody_system.mass
     if verbose:
         print("convert to AMUSE took {0:.2f} s".format(time.time() - start))
 
-
-    # Add the initial position and velocity vectors of the GC within the Galaxy
-    amuse.x += Rinit[0]
-    amuse.y += Rinit[1]
-    amuse.z += Rinit[2]
-    amuse.vx += Vinit[0]
-    amuse.vy += Vinit[1]
-    amuse.vz += Vinit[2]
-
     # Setup the converter to pass to the AMUSE Nbody code
     converter = nbody_system.nbody_to_si(M | units.MSun, rt | units.parsec)
+    print(amuse.sorted_by_attribute('key')[0:3])
+    amuse = ParticlesWithUnitsConverted(amuse, converter.as_converter_from_si_to_generic())
+    print(amuse.sorted_by_attribute('key')[0:3])
 
+    # Add the initial position and velocity vectors of the GC within the Galaxy
+    # TODO: convert parsec and km/s to generic using our converter
+    # amuse.x += Rinit[0]
+    # amuse.y += Rinit[1]
+    # amuse.z += Rinit[2]
+    # amuse.vx += Vinit[0]
+    # amuse.vy += Vinit[1]
+    # amuse.vz += Vinit[2]
+
+    # Let limepy scale the model; the converter scaled amuse Nbody realisation
+    model = limepy.limepy(W0, M=M, rt=rt, g=g, verbose=verbose, project=True)
     return model, particles, amuse, converter
 
 
@@ -76,6 +85,7 @@ def setup_cluster(N=1000, Mcluster=1000.0 | units.MSun, Rcluster=10.0 | units.pa
     """ Setup an Nbody star cluster at a given location within the Galaxy """
 
     converter = nbody_system.nbody_to_si(Mcluster, Rcluster)
+    print("\nsetup_cluster converter units\n{}\n\n".format(converter.units))
     stars = new_plummer_sphere(N, converter)
     stars.x += Rinit[0]
     stars.y += Rinit[1]
@@ -131,8 +141,7 @@ def integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
 
     Nsteps = int(tend/dt)
     time = tstart
-    print("Nsteps, time = {}, {}".format(Nsteps, time))
-    return
+    print("Nsteps, time, dt = {}, {}, {}".format(Nsteps, time, dt.value_in(units.Myr)))
     try:
         while time < tend:
             i = int(time/tend * Nsteps)
@@ -345,13 +354,23 @@ def gc_in_isolation(sim, ts=numpy.linspace(0.0, 1.0, 1000) * u.Gyr,
         tstart.value_in(units.Gyr), tend.value_in(units.Gyr), Nsteps, dt.value_in(units.Myr)))
 
     def dump_snapshot(stars, time, i):
-        print(sim.outdir)
+        fname = "{}{}_isolation_T={}_i={}.hdf5".format(sim.outdir, sim.gc_name,
+            time.value_in(units.Myr), i)
+        print("Dumping snapshot: {0}".format(fname))
+        if os.path.exists(fname) and os.path.isfile(fname):
+            print("WARNING: file exists, overwriting it!")
+
+        modelname = "King, T={0} Myr".format(time.value_in(units.Myr))
+        # append_to_file --> existing file is removed and overwritten
+        write_set_to_file(stars, fname, "hdf5", append_to_file=False)
+
         return stars
 
     start = time.time()
     integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
         sim.king_amuse, sim.converter, tstart=tstart, tend=tend, dt=dt,
         do_something=dump_snapshot, number_of_workers=number_of_workers,
+
         softening=softening, run_in_isolation=True,
     )
     runtime = time.time() - start
@@ -401,7 +420,7 @@ if __name__ == "__main__":
     logger.info("  Nstars: {0}".format(args.Nstars))
     logger.info("  tend: {0}".format(args.tend))
     logger.info("  dt: {0}".format(args.dt))
-    logger.info("  softening: {0}\n".format(args.softening))
+    logger.info("  softening: {0}".format(args.softening))
     logger.info("  number_of_workers: {0}\n".format(args.number_of_workers))
 
     logger.info("  run_example: {0}".format(args.run_example))
