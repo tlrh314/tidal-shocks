@@ -49,39 +49,39 @@ def print_particleset_info(p, converter, modelname):
     print("")
 
 
-def get_radial_profiles(p, rmin=1e-2, rmax=1e3, Nbins=256, verbose=False):
-    """ Generate radial profile of Particleset p """
+def get_radial_profiles(p, c=None, rmin=1e-2, rmax=1e3, Nbins=256, verbose=False):
+    """ Generate radial profile of Particleset p /w center c """
 
     start = time.time()
 
-    # Particle radius
-    p_r = (p.x**2 + p.y**2 + p.z**2).sqrt()
+    if c is None:
+        c = [0.0, 0.0, 0.0]
 
-    # Radii for our radial profile
-    radii = numpy.logspace(numpy.log10(rmin), numpy.log10(rmax), Nbins+1) | units.parsec
-    dr = radii[1:] - radii[:-1]
+    r = numpy.sqrt(
+        (p.x.value_in(units.parsec) - c[0])**2 +
+        (p.y.value_in(units.parsec) - c[1])**2 +
+        (p.z.value_in(units.parsec) - c[2])**2)
+    r_i = r.argsort()
 
-    N_in_shell = numpy.zeros(Nbins)
-    M_below_r = numpy.zeros(Nbins) | units.MSun
+    r_edges = numpy.logspace(numpy.log10(rmin), numpy.log10(rmax), Nbins+1)
+    r_mid = 0.5 * (r_edges[1:] + r_edges[:-1])
+    dr = r_edges[1:] - r_edges[:-1]
+    volume = 4 * numpy.pi * (r_mid**2) * dr
+    N_in_shell = numpy.array( [numpy.abs(r[r_i]-rr).argmin() for rr in r_edges] )
+
+    M_of_r = numpy.zeros(Nbins)
     rho_of_r = numpy.zeros(Nbins)
-    for i, r in enumerate(radii[:-1]):
-        # Count number of particles < r, and sum their mass for M(<r).
-        in_shell, = numpy.where(p_r < r)
-        M_below_r[i] = p[in_shell].mass.as_quantity_in(units.MSun).sum()
-        N_in_shell[i] = (in_shell.size)
-        if i > 0:
-            # Get the mass M(<r) from r-dr to r for rho(r)
-            rho_of_r[i] = (M_below_r[i] - M_below_r[i-1]).value_in(units.MSun)
+    mass_sorted = p.mass.value_in(units.MSun)[r_i]
+    for i in range(1, len(r_edges)-1):
+        M_of_r[i] = ( mass_sorted[N_in_shell[i-1]:N_in_shell[i]].sum() )
+        rho_of_r[i] = M_of_r[i]
 
-    volume = 4 * numpy.pi * (radii[:-1]**2).value_in(units.parsec**2) * \
-        dr.value_in(units.parsec)
-    rho_of_r = (rho_of_r | units.MSun/units.parsec**3) / volume
-    rho_of_r[0] = rho_of_r[1]  # good enough, no?
+    rho_of_r = (rho_of_r / volume) | units.MSun/units.parsec**3
 
     if verbose:
         print("get_radial_profiles took {0:.2f} s".format(time.time() - start))
 
-    return radii[:-1], N_in_shell, M_below_r, rho_of_r, volume
+    return r_mid | units.parsec, N_in_shell, M_of_r.cumsum() | units.MSun, rho_of_r, volume | units.parsec**-3
 
 
 def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r, volume,
