@@ -52,6 +52,19 @@ def print_particleset_info(p, converter, modelname):
 def get_radial_profiles(p, c=None, rmin=1e-3, rmax=1e3, Nbins=256, timing=True):
     """ Generate radial profile of Particleset p /w center c """
 
+    print("get_radial_profiles")
+    print("  center: {}".format(c))
+    print("  p.com:  {}".format(p.center_of_mass().value_in(units.parsec)))
+    Mtot = p.total_mass().as_quantity_in(units.MSun)
+    print("  Mtot:   {}".format(Mtot))
+    Ekin = p.kinetic_energy().as_quantity_in(units.J)
+    print("  Ekin:   {}".format(Ekin))
+    Epot = p.potential_energy().as_quantity_in(units.J)
+    print("  Epot:   {}".format(Epot))
+    print("  Ekin/Epot: {}".format(Ekin/Epot))
+    Ltot = p.total_angular_momentum().as_quantity_in(units.MSun*units.parsec**2/units.Myr)
+    print("  Ltot:   {}".format(Ltot))
+
     start = time.time()
 
     if c is None:

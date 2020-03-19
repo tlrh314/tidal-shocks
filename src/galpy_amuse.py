@@ -14,6 +14,7 @@ from amuse.io import read_set_from_file
 from amuse.datamodel import Particles
 from amuse.datamodel import ParticlesWithUnitsConverted
 from amuse.ic.plummer import new_plummer_sphere
+from amuse.community.fi.interface import Fi
 from amuse.community.bhtree.interface import BHTree
 from amuse.community.gadget2.interface import Gadget2
 from amuse.couple import bridge
@@ -37,7 +38,7 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
 
     # Setup the Limepy model - CAUTION: do **not** scale here b/c we use the
     # AMUSE converter later to scale the model from Nbody to physical units.
-    model = limepy.limepy(W0, M=1, rt=1, g=g, verbose=verbose)
+    model = limepy.limepy(W0, g=g, M=1, rt=1, G=1, verbose=verbose)
     if timing:
         print("limepy.limepy took {0:.2f} s".format(time.time() - start))
 
@@ -46,10 +47,6 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     particles = limepy.sample(model, N=Nstars, seed=seed, verbose=verbose)
     if timing:
         print("limepy.sample took {0:.2f} s".format(time.time() - start))
-
-    # Now let limepy scale the model because that's what we'll return later
-    # and we kinda like the model to be in physical units. Also project :-).
-    model = limepy.limepy(W0, M=M, rt=rt, g=g, verbose=verbose, project=True)
 
     # Move the Limepy particles into an AMUSE datamodel Particles instance
     # Note that we use nbody units here and the AMUSE converter to scale afterwards
@@ -62,8 +59,26 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     amuse.vy = particles.vy | nbody_system.length / nbody_system.time
     amuse.vz = particles.vz | nbody_system.length / nbody_system.time
     amuse.mass = particles.m | nbody_system.mass
+
+    # Move particles to center of mass
+    amuse.move_to_center()
+
     if timing:
         print("convert to AMUSE took {0:.2f} s".format(time.time() - start))
+
+    print("limepy_to_amuse, pre-converter business")
+    print("  G:      {}".format(nbody_system.G))
+    print("  com:    {}".format(amuse.center_of_mass())) # .value_in(units.parsec)))
+    print("  comvel: {}".format(amuse.center_of_mass_velocity()))
+    Mtot = amuse.total_mass()  # .as_quantity_in(units.MSun)
+    print("  Mtot:   {}".format(Mtot))
+    Ekin = amuse.kinetic_energy()  # .as_quantity_in(units.J)
+    print("  Ekin:   {}".format(Ekin))
+    Epot = amuse.potential_energy(G=nbody_system.G)  # .as_quantity_in(units.J)
+    print("  Epot:   {}".format(Epot))
+    print("  Ekin/Epot: {}".format(Ekin/Epot))
+    Ltot = amuse.total_angular_momentum()  # .as_quantity_in(units.MSun*units.parsec**2/units.Myr)
+    print("  Ltot:   {}".format(Ltot))
 
     # Setup the converter to pass to the AMUSE Nbody code
     converter = nbody_system.nbody_to_si(M | units.MSun, rt | units.parsec)
@@ -71,10 +86,7 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     # And apply the converter to scale the Nbody units to physical units. The
     # converter can later be passed to the Nbody solver and we no longer need
     # to worry about the physical units as that will be handled by AMUSE :-)
-    amuse = ParticlesWithUnitsConverted(amuse, converter.as_converter_from_si_to_generic())
-
-    # Move particles to center of mass
-    amuse.move_to_center()
+    amuse = ParticlesWithUnitsConverted(amuse, converter.as_converter_from_si_to_nbody())
 
     # Finally, add the initial position and velocity vectors of the GC within the Galaxy
     amuse.x += Rinit[0]
@@ -84,6 +96,21 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     amuse.vy += Vinit[1]
     amuse.vz += Vinit[2]
 
+    print("limepy_to_amuse, post-converter business")
+    print("  com:    {}".format(amuse.center_of_mass().value_in(units.parsec)))
+    Mtot = amuse.total_mass().as_quantity_in(units.MSun)
+    print("  Mtot:   {}".format(Mtot))
+    Ekin = amuse.kinetic_energy().as_quantity_in(units.J)
+    print("  Ekin:   {}".format(Ekin))
+    Epot = amuse.potential_energy().as_quantity_in(units.J)
+    print("  Epot:   {}".format(Epot))
+    print("  Ekin/Epot: {}".format(Ekin/Epot))
+    Ltot = amuse.total_angular_momentum().as_quantity_in(units.MSun*units.parsec**2/units.Myr)
+    print("  Ltot:   {}".format(Ltot))
+
+    # Now let limepy scale the model because that's what we'll return
+    # and we kinda like the model to be in physical units. Also project :-).
+    model = limepy.limepy(W0, g=g, M=M, rt=rt, G=1, verbose=verbose, project=True)
     return model, particles, amuse, converter
 
 
@@ -107,7 +134,7 @@ def setup_cluster(N=1000, Mcluster=1000.0 | units.MSun, Rcluster=10.0 | units.pa
 
 def integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
         stars, converter, tstart=0.0 | units.Myr, tend=100.0 | units.Myr,
-        dt=1.0 | units.Myr, softening=3.0 | units.parsec, opening_angle=0.6,
+        dt=1.0 | units.Myr, softening=0.1 | units.parsec, opening_angle=0.6,
         number_of_workers=1, do_something=lambda stars, time, i: stars,
         run_in_isolation=False,
     ):
@@ -115,10 +142,14 @@ def integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
 
     print("Setting up cluster_code /w {} workers".format(number_of_workers))
     print("converter: {}".format(converter))
-    cluster_code = BHTree(converter, number_of_workers=number_of_workers)
+    # cluster_code = BHTree(converter, number_of_workers=number_of_workers)
+    os.environ["OMP_NUM_THREADS"] = "4"
+    cluster_code = Fi(converter, number_of_workers=1, mode="openmp")
     cluster_code.parameters.epsilon_squared = (softening)**2
     cluster_code.parameters.opening_angle = opening_angle
     cluster_code.parameters.timestep = dt
+    print(cluster_code.parameters.timestep)
+    print(cluster_code.parameters)
     cluster_code.particles.add_particles(stars)
     print("Done setting up cluster_code")
 
@@ -149,23 +180,33 @@ def integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
 
     Nsteps = int(tend/dt)
     time = tstart
-    print("Nsteps, time, dt = {}, {}, {}".format(Nsteps, time, dt.value_in(units.Myr)))
+    print("Nsteps, time, dt, tsnap = {}, {}, {}, {}".format(
+        Nsteps, time, dt.value_in(units.Myr), tsnap.value_in(units.Myr)
+    ))
+
+    # Also do_something for the ICs
+    i = int(time/tend * Nsteps)  # should be 0
+    stars = do_something(stars, time, i)
     try:
         while time < tend:
-            i = int(time/tend * Nsteps)
-
             # Evolve
+            print("gravity.evolve_model", time.as_quantity_in(units.Myr))
             gravity.evolve_model( time+dt )
+            if (time+dt).value_in(units.Myr) % tsnap.value_in(units.Myr) < 1e-9:
+                print("SNAP")
 
-            # Copy stars from gravity to output or analyze the simulation
-            channel_from_gravity_to_stars.copy()
+                # Copy stars from gravity to output or analyze the simulation
+                print("channel_from_gravity_to_stars.copy()")
+                channel_from_gravity_to_stars.copy()
 
-            stars = do_something(stars, time, i)
+                i = int((time+dt)/tend * Nsteps)
+                stars = do_something(stars, time+dt, i)
 
-            # If you edited the stars particle set, for example to remove stars from the
-            # array because they have been kicked far from the cluster, you need to
-            # copy the array back to gravity:
-            channel_from_stars_to_gravity.copy()
+                # If you edited the stars particle set, for example to remove stars from the
+                # array because they have been kicked far from the cluster, you need to
+                # copy the array back to gravity:
+                print("channel_from_stars_to_gravity.copy()")
+                channel_from_stars_to_gravity.copy()
 
             # Update time
             time = gravity.model_time
@@ -352,8 +393,8 @@ def compare_galpy_and_amuse(logger, h19_o, h19_combined, N=1,
     return o
 
 
-def gc_in_isolation(sim, ts=numpy.linspace(0.0, 1.0, 1000) * u.Gyr,
-        softening=3.0|units.parsec, number_of_workers=1):
+def gc_in_isolation(sim, ICs, converter, ts=numpy.linspace(0.0, 1.0, 1000) * u.Gyr,
+        tsnap=0.1|units.Myr, softening=0.1|units.parsec, number_of_workers=1):
     """ Integrate the GC without external potential in AMUSE /w Gadget2 """
 
     tstart, tend, Nsteps, dt = convert_galpy_to_amuse_times(ts)
@@ -362,23 +403,23 @@ def gc_in_isolation(sim, ts=numpy.linspace(0.0, 1.0, 1000) * u.Gyr,
         tstart.value_in(units.Gyr), tend.value_in(units.Gyr), Nsteps, dt.value_in(units.Myr)))
 
     def dump_snapshot(stars, time, i):
-        fname = "{}{}_isolation_T={}_i={}.hdf5".format(sim.outdir, sim.gc_name,
+        fname = "{}{}_isolation_T={:.2f}_i={:04d}.hdf5".format(sim.outdir, sim.gc_name,
             time.value_in(units.Myr), i)
         print("Dumping snapshot: {0}".format(fname))
         if os.path.exists(fname) and os.path.isfile(fname):
             print("WARNING: file exists, overwriting it!")
 
-        modelname = "King, T={0} Myr".format(time.value_in(units.Myr))
+        modelname = "King, T={0:.2f} Myr".format(time.value_in(units.Myr))
         # append_to_file --> existing file is removed and overwritten
         write_set_to_file(stars, fname, "hdf5", append_to_file=False)
+        print("Done")
 
         return stars
 
     start = time.time()
     integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
-        sim.king_amuse, sim.converter, tstart=tstart, tend=tend, dt=dt,
+        ICs, converter, tstart=tstart, tend=tend, dt=dt,
         do_something=dump_snapshot, number_of_workers=number_of_workers,
-
         softening=softening, run_in_isolation=True,
     )
     runtime = time.time() - start
@@ -395,9 +436,11 @@ def new_argument_parser():
         type=int, help="Number of particles in Nbody GC representation")
     args.add_argument("-T", "--tend", dest="tend", default=100.0,
         type=float, help="Simulation end time. Use float, in Myr!")
-    args.add_argument("-dt", "--timestep", dest="dt", default=1.0,
+    args.add_argument("-dt", "--timestep", dest="dt", default=0.01,
         type=float, help="Simulation time step. Use float, in Myr!")
-    args.add_argument("-s", "--softening", dest="softening", default=3.0,
+    args.add_argument("-tsnap", "--tsnap", dest="tsnap", default=1.0,
+        type=float, help="Time between snapshots. Use float, in Myr!")
+    args.add_argument("-s", "--softening", dest="softening", default=0.1,
         type=float, help="Force softening. Use float, in pc!")
     args.add_argument("-np", "--number_of_workers", dest="number_of_workers", default=4,
         type=int, help="Number of workers")
@@ -416,6 +459,7 @@ if __name__ == "__main__":
     args, unknown = new_argument_parser().parse_known_args()
     Nsteps = int(args.tend/args.dt)
     ts = numpy.linspace(0.0, args.tend/1000, Nsteps) * u.Gyr
+    tsnap = args.tsnap | units.Myr
     softening = args.softening | units.parsec
 
     import logging
@@ -428,6 +472,7 @@ if __name__ == "__main__":
     logger.info("  Nstars: {0}".format(args.Nstars))
     logger.info("  tend: {0}".format(args.tend))
     logger.info("  dt: {0}".format(args.dt))
+    logger.info("  tsnap: {0}".format(args.tsnap))
     logger.info("  softening: {0}".format(args.softening))
     logger.info("  number_of_workers: {0}\n".format(args.number_of_workers))
 
@@ -444,13 +489,15 @@ if __name__ == "__main__":
 
     if args.run_isolation:
         # Sample initial conditions for deBoer+ 2019 bestfit King model
-        sim.sample_deBoer2019_bestfit_king(Nstars=args.Nstars)
+        king_model, king_limepy_sampled, king_amuse_sampled, king_converter = \
+            sim.sample_deBoer2019_bestfit_king(Nstars=args.Nstars)
 
         # Plot the initial conditions as a sanity check
         if "freya" in platform.node(): pyplot.switch_backend("agg")
         fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
         sim.add_deBoer2019_to_fig(fig, show_King=True)
-        sim.add_deBoer2019_sampled_to_ax(ax, parm="Sigma", Nbins=512)
+        sim.add_deBoer2019_sampled_to_ax(ax, king_amuse_sampled, parm="Sigma",
+            model=king_model, rmin=1e-4, rmax=1e3, Nbins=int(numpy.sqrt(args.Nstars)))
         ax.legend(fontsize=20)
         fname = "{0}{1}_sampled_ICs.png".format(sim.outdir, sim.gc_name)
         pyplot.savefig(fname)
@@ -458,8 +505,8 @@ if __name__ == "__main__":
         logger.info("  Saved: {0}".format(fname))
 
         # Run the simulation
-        gc_in_isolation(sim, ts=ts, softening=softening,
-            number_of_workers=args.number_of_workers)
+        gc_in_isolation(sim, king_amuse_sampled, king_converter, ts=ts, tsnap=tsnap,
+            softening=softening, number_of_workers=args.number_of_workers)
 
     if args.run_example:
         stars, converter = setup_cluster()

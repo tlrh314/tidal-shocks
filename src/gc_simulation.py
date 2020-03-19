@@ -1,17 +1,21 @@
 import os
 import sys
 import time
+import glob
 import copy
 import logging
 import platform
 
 import numpy
 import scipy
+from scipy import signal
 import matplotlib
 from matplotlib import pyplot
 from matplotlib.font_manager import FontProperties
 pyplot.style.use("tlrh")
 from amuse.units import units
+from amuse.io import read_set_from_file
+
 
 from tlrh_profiles import (
     limepy_wrapper,
@@ -27,6 +31,7 @@ from galpy_amuse import limepy_to_amuse
 from tlrh_datamodel import get_radial_profiles
 from tlrh_datamodel import project_amuse_profiles
 from tlrh_datamodel import scatter_particles_xyz
+from tlrh_datamodel import print_particleset_info
 
 BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
 if "/limepy" not in sys.path:
@@ -283,7 +288,7 @@ class StarClusterSimulation(object):
             Nstars=Nstars, verbose=verbose)
 
     def add_deBoer2019_sampled_to_ax(self, ax, sampled, parm="rho", model=None,
-            rmin=1e-3, rmax=1e3, Nbins=256, timing=True):
+            rmin=1e-3, rmax=1e3, Nbins=256, smooth=False, timing=True):
         if parm not in ["rho", "Sigma", "mc"]:
             self.logger.error("ERROR: cannot add {0} to ax".format(parm))
             return
@@ -297,8 +302,10 @@ class StarClusterSimulation(object):
 
         if parm == "rho":
             if model is not None: ax.plot(model.r, model.rho)
-            ax.plot(radii.value_in(units.parsec),
-                rho_of_r.value_in(units.MSun/units.parsec**3),
+            rho_plot = rho_of_r.value_in(units.MSun/units.parsec**3)
+            # if smooth:
+            #     rho_plot = scipy.signal.savgol_filter(rho_of_r, 21, 2)
+            ax.plot(radii.value_in(units.parsec), rho_plot,
                 c="r", lw=2, drawstyle="steps-mid", label=r"sampled $\rho(r)$"
             )
         elif parm == "Sigma":
@@ -342,26 +349,12 @@ class StarClusterSimulation(object):
             facecolor="grey", edgecolor="grey", alpha=0.2, transform=trans)
 
 
-    def analyse_isolation(self, rmin=1e-3, rmax=1e3, Nbins=256):
-        import glob
-        from amuse.units import units
-        from amuse.io import read_set_from_file
-        from tlrh_datamodel import print_particleset_info
+    def analyse_isolation(self, model, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
         snap_base = "{}{}_isolation_*.hdf5".format(self.outdir, self.gc_name)
-        snapshots = glob.glob(snap_base)
+        snapshots = sorted(
+            glob.glob(snap_base)
+        )
         print("Found {0} snapshots".format(len(snapshots)))
-
-        # Initial conditions: plot Sigma(R) vs R
-        king_model, king_limepy_sampled, king_amuse_sampled, king_converter = \
-            self.sample_deBoer2019_bestfit_king(Nstars=50000, verbose=True)
-        fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
-        self.add_deBoer2019_to_fig(fig, show_King=True)
-        ax.title("{0} ICs".format(self.gc_name))
-        self.add_deBoer2019_sampled_to_ax(ax, king_model, king_amuse_sampled,
-            parm="Sigma", rmin=1e-4, rmax=1e3, Nbins=1024)
-        ax.legend(fontsize=20)
-        # pyplot.savefig("{0}{1}_sampled.png".format(self.outdir, self.gc_name))
-        pyplot.show(fig)
 
         for i, fname in enumerate(snapshots):
             print("  Loading snapshot: {0}".format(fname))
@@ -375,22 +368,29 @@ class StarClusterSimulation(object):
             print("  This snapshot was saved at T={0}".format(Tsnap.as_quantity_in(units.Myr)))
             print("")
             modelname = "King, loaded, T={0} Myr".format(Tsnap.value_in(units.Myr))
-            print_particleset_info(stars, self.converter, modelname)
+            # print_particleset_info(stars, converter, modelname)
 
             # fig = scatter_particles_xyz(self.king_amuse)
             # pyplot.show(fig)
 
             # Plot Sigma(R) vs R
-            king_model, dontcare, dontcare, king_converter = \
-                self.sample_deBoer2019_bestfit_king(Nstars=0)
-            fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
+            fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
             self.add_deBoer2019_to_fig(fig, show_King=True)
-            self.add_deBoer2019_sampled_to_ax(ax, king_model, king_amuse_sampled,
-                parm="Sigma", rmin=1e-4, rmax=1e3, Nbins=1024)
+            fig.suptitle("{0} at T={1} Myr".format(self.gc_name,
+                Tsnap.value_in(units.Myr)), fontsize=22)
+            self.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
+                parm="rho", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
+            self.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
+                parm="Sigma", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
             ax.legend(fontsize=20)
-            pyplot.savefig("{0}{1}_sampled.png".format(outdir, gc_name))
+            pyplot.savefig("{0}{1}_isolation_{2:04d}.png".format(self.outdir, self.gc_name, i))
             pyplot.show(fig)
-            # pyplot.savefig("{0}{1}_isolation_{2:04d}.png".format(self.outdir, self.gc_name, i))
+
+            # Mass
+            fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
+            self.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
+                parm="mc", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
+            pyplot.show(fig)
 
 
     def __str__(self):
@@ -415,7 +415,7 @@ if __name__ == "__main__":
     sim = StarClusterSimulation(logger, "NGC 104")
     logger.info(sim)
 
-    fig, ax = pyplot.subplots(1, 1, figsize=(10, 10))
+    fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
     pyplot.switch_backend("TkAgg")
     sim.add_deBoer2019_to_fig(fig)
     pyplot.show()
