@@ -49,7 +49,7 @@ def print_particleset_info(p, converter, modelname):
     print("")
 
 
-def get_radial_profiles(p, c=None, rmin=1e-2, rmax=1e3, Nbins=256, verbose=False):
+def get_radial_profiles(p, c=None, rmin=1e-3, rmax=1e3, Nbins=256, timing=True):
     """ Generate radial profile of Particleset p /w center c """
 
     start = time.time()
@@ -75,13 +75,34 @@ def get_radial_profiles(p, c=None, rmin=1e-2, rmax=1e3, Nbins=256, verbose=False
     for i in range(1, len(r_edges)-1):
         M_of_r[i] = ( mass_sorted[N_in_shell[i-1]:N_in_shell[i]].sum() )
         rho_of_r[i] = M_of_r[i]
-
     rho_of_r = (rho_of_r / volume) | units.MSun/units.parsec**3
 
-    if verbose:
+    if timing:
         print("get_radial_profiles took {0:.2f} s".format(time.time() - start))
 
-    return r_mid | units.parsec, N_in_shell, M_of_r.cumsum() | units.MSun, rho_of_r, volume | units.parsec**-3
+    return r_mid | units.parsec, N_in_shell, M_of_r.cumsum() | units.MSun, \
+        rho_of_r, volume | units.parsec**-3
+
+
+def project_amuse_profiles(radii, rho_of_r, timing=True):
+    # Shamelessly copied from mgieles/limepy/limepy.py, but see
+    # 2015MNRAS.454..576G eq. 35
+    start = time.time()
+    R = copy.copy(radii.value_in(units.parsec))
+    radii = radii.value_in(units.parsec)
+    rho = rho_of_r.value_in(units.MSun/units.parsec**3)
+    Sigma = numpy.zeros(len(radii))
+    for i in range(len(radii)-1):
+        c = (radii >= R[i])
+        r = radii[c]
+        z = numpy.sqrt(abs(r**2 - R[i]**2)) # avoid small neg. values
+        Sigma[i] = 2.0*abs(scipy.integrate.simps(rho[c], x=z))
+    if timing:
+        print("_project_amuse took {0:.2f} s".format(time.time() - start))
+
+    # TODO: Velocity dispersion profiles
+    return R, Sigma  # v2_PM, v2_RV
+
 
 
 def plot_radial_profiles(radii, N_in_shell, M_below_r, rho_of_r, volume,

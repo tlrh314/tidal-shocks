@@ -7,7 +7,9 @@ import platform
 
 import numpy
 import scipy
+import matplotlib
 from matplotlib import pyplot
+from matplotlib.font_manager import FontProperties
 pyplot.style.use("tlrh")
 from amuse.units import units
 
@@ -23,6 +25,7 @@ from tlrh_profiles import (
 )
 from galpy_amuse import limepy_to_amuse
 from tlrh_datamodel import get_radial_profiles
+from tlrh_datamodel import project_amuse_profiles
 from tlrh_datamodel import scatter_particles_xyz
 
 BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
@@ -258,72 +261,86 @@ class StarClusterSimulation(object):
         W0_deB19 = self.deB19_fit["W_king"]
         M_deB19 = self.deB19_fit["M_king"]
         rt_deB19 = parsec2arcmin(self.deB19_fit["rt_king"], self.distance_kpc)
-        self.king_model, self.king_limepy_sampled, self.king_amuse, self.converter = \
-            limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=1,
-            Nstars=Nstars, verbose=verbose
-        )
+        # king_model, king_limepy_sampled, king_amuse_sampled, king_converter = \
+        return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=1,
+            Nstars=Nstars, verbose=verbose)
 
-    def _set_amuse_radial_profiles(self, rmin, rmax, Nbins, verbose=False):
-        if not hasattr(self, "king_amuse"):
-            self.logger.error("Cannot add sampled King profile to fig")
-            return
-        (self.amuse_radii, self.amuse_N_in_shell, self.amuse_M_below_r,
-         self.amuse_rho_of_r, self.amuse_volume) = get_radial_profiles(
-            self.king_amuse, rmin=rmin, rmax=rmax, Nbins=Nbins, verbose=verbose)
+    def sample_deBoer2019_bestfit_wilson(self, Nstars=1337, verbose=False):
+        W0_deB19 = self.deB19_fit["W_wil"]
+        M_deB19 = self.deB19_fit["M_wil"]
+        rt_deB19 = parsec2arcmin(self.deB19_fit["rt_wil"], self.distance_kpc)
+        # wilson_model, wilson_limepy_sampled, wilson_amuse_sampled, wilson_converter = \
+        return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=2,
+            Nstars=Nstars, verbose=verbose)
 
-    def _project_amuse(self):
-        # Shamelessly copied from mgieles/limepy/limepy.py, but see
-        # 2015MNRAS.454..576G eq. 35
-        R = copy.copy(self.amuse_radii.value_in(units.parsec))
-        radii = self.amuse_radii.value_in(units.parsec)
-        rho = self.amuse_rho_of_r.value_in(units.MSun/units.parsec**3)
-        Sigma = numpy.zeros(len(self.amuse_radii))
-        for i in range(len(self.amuse_radii)-1):
-            c = (radii >= R[i])
-            r = radii[c]
-            z = numpy.sqrt(abs(r**2 - R[i]**2)) # avoid small neg. values
-            Sigma[i] = 2.0*abs(scipy.integrate.simps(rho[c], x=z))
-        self.amuse_R = R
-        self.amuse_Sigma = Sigma
+    def sample_deBoer2019_bestfit_limepy(self, Nstars=1337, verbose=False):
+        W0_deB19 = self.deB19_fit["W_lime"]
+        g_deB19 = self.deB19_fit["g_lime"]
+        M_deB19 = self.deB19_fit["M_lime"]
+        rt_deB19 = parsec2arcmin(self.deB19_fit["rt_lime"], self.distance_kpc)
+        # limepy_model, limepy_limepy_sampled, limepy_amuse_sampled, limepy_converter = \
+        return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=g_deB19,
+            Nstars=Nstars, verbose=verbose)
 
-        # TODO: Velocity dispersion profiles
-
-    def add_deBoer2019_sampled_to_ax(self, ax, parm="rho",
-            rmin=1e-3, rmax=1e3, Nbins=256):
+    def add_deBoer2019_sampled_to_ax(self, ax, sampled, parm="rho", model=None,
+            rmin=1e-3, rmax=1e3, Nbins=256, timing=True):
         if parm not in ["rho", "Sigma", "mc"]:
             self.logger.error("ERROR: cannot add {0} to ax".format(parm))
             return
-        self._set_amuse_radial_profiles(rmin, rmax, Nbins)
 
-        # iNstar = numpy.where(self.amuse_N_in_shell == len(self.king_amuse.x))[0][0]
-        # self.amuse_rt = self.amuse_radii[iNstar].value_in(units.parsec)
-        # # TODO: get the truncation radius from the sampled profile. Seems to differ ~5%
-        # # from the 'true' value that we know from the underlying limepy model that we sample
-        # # print(self.amuse_rt, self.king_model.rt)
-        # ax.axvline(self.amuse_rt, c="r", lw=4)
+        start = time.time()
+        radii, N_in_shell, M_below_r, rho_of_r, volume = get_radial_profiles(
+            sampled, c=sampled.center_of_mass().value_in(units.parsec),
+            rmin=rmin, rmax=rmax, Nbins=Nbins, timing=timing)
+        if timing:
+            print("get_radial_profiles took {0:.2f} s".format(time.time() - start))
 
         if parm == "rho":
-            ax.plot(self.king_model.r, self.king_model.rho)
-            ax.plot(self.amuse_radii.value_in(units.parsec),
-                self.amuse_rho_of_r.value_in(units.MSun/units.parsec**3),
+            if model is not None: ax.plot(model.r, model.rho)
+            ax.plot(radii.value_in(units.parsec),
+                rho_of_r.value_in(units.MSun/units.parsec**3),
                 c="r", lw=2, drawstyle="steps-mid", label=r"sampled $\rho(r)$"
             )
         elif parm == "Sigma":
-            self._project_amuse()
-            ax.plot(self.amuse_R, self.amuse_Sigma, c="magenta", lw=2,
+            R, Sigma = project_amuse_profiles(radii, rho_of_r, timing=timing)
+            ax.plot(R, Sigma, c="magenta", lw=2,
                 drawstyle="steps-mid", label=r"sampled $\Sigma(R)$")
         elif parm == "mc":
-            ax.plot(self.king_model.r, self.king_model.mc)
-            ax.plot(self.amuse_radii.value_in(units.parsec),
-                self.amuse_M_below_r.value_in(units.MSun),
+            if model is not None: ax.plot(model.r, model.mc)
+            ax.plot(radii.value_in(units.parsec),
+                M_below_r.value_in(units.MSun),
                 c="r", lw=2, drawstyle="steps-mid", label=r"sampled $M(<r)$")
-            ax.set_xlim(0.9*self.amuse_radii.value_in(units.parsec).min(),
-                1.1*self.amuse_radii.value_in(units.parsec).max())
-            ax.set_ylim(0.2, 3*numpy.max(self.amuse_M_below_r.value_in(units.MSun)))
+            ax.set_xlim(0.9*radii.value_in(units.parsec).min(),
+                1.1*radii.value_in(units.parsec).max())
+            ax.set_ylim(0.2, 3*numpy.max(M_below_r.value_in(units.MSun)))
             ax.set_xscale("log")
             ax.set_yscale("log")
             ax.set_xlabel("Radius [parsec]")
             ax.set_ylabel("Mass (< r) [MSun]")
+
+        # Add characteristic radii
+        trans = matplotlib.transforms.blended_transform_factory(ax.transData, ax.transAxes)
+        font = FontProperties()
+        font.set_size(12)
+        font.set_weight("bold")
+        if model is not None:
+            for n, r, c in zip(["King core", "half-mass", "virial", "truncation"],
+                    [model.r0, model.rh, model.rv, model.rt],
+                    # ["#980043", "#dd1c77", "#df65b0", "#d7b5d8"]
+                    ["orange", "green", "blue", "red"]
+            ):
+                ax.vlines(r, ymin=self.deB19_fit["BGlev"]/25,
+                    ymax=self.deB19_fit["BGlev"], color=c, lw=4)
+                # ax.axvline(r, c=c, ls="-", lw=2)
+                # ax.text(1.05*r, 0.98, "{0}: {1:.3f}".format(n, r), c=c, rotation=90,
+                #         fontsize=12, ha="left", va="top", transform=trans)  #, fontproperties=font)
+
+        # TODO: Add force softening
+        xlim = ax.get_xlim()
+        softening = parsec2arcmin(0.1, self.distance_kpc)
+        ax.fill_between(numpy.arange(xlim[0], softening, 0.01), 0, 1,
+            facecolor="grey", edgecolor="grey", alpha=0.2, transform=trans)
+
 
     def analyse_isolation(self, rmin=1e-3, rmax=1e3, Nbins=256):
         import glob
@@ -334,14 +351,16 @@ class StarClusterSimulation(object):
         snapshots = glob.glob(snap_base)
         print("Found {0} snapshots".format(len(snapshots)))
 
-        # Initial conditions
-        # Plot Sigma(R) at this time step
+        # Initial conditions: plot Sigma(R) vs R
+        king_model, king_limepy_sampled, king_amuse_sampled, king_converter = \
+            self.sample_deBoer2019_bestfit_king(Nstars=50000, verbose=True)
         fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
         self.add_deBoer2019_to_fig(fig, show_King=True)
-        print(self.king_amuse.total_mass().value_in(units.MSun))
-        self.add_deBoer2019_sampled_to_ax(ax, parm="Sigma")
+        ax.title("{0} ICs".format(self.gc_name))
+        self.add_deBoer2019_sampled_to_ax(ax, king_model, king_amuse_sampled,
+            parm="Sigma", rmin=1e-4, rmax=1e3, Nbins=1024)
         ax.legend(fontsize=20)
-        pyplot.savefig("{0}{1}_isolation_ICs.png".format(self.outdir, self.gc_name))
+        # pyplot.savefig("{0}{1}_sampled.png".format(self.outdir, self.gc_name))
         pyplot.show(fig)
 
         for i, fname in enumerate(snapshots):
@@ -358,20 +377,20 @@ class StarClusterSimulation(object):
             modelname = "King, loaded, T={0} Myr".format(Tsnap.value_in(units.Myr))
             print_particleset_info(stars, self.converter, modelname)
 
-            self.king_amuse = stars
-            self._set_amuse_radial_profiles(rmin, rmax, Nbins)
-            self._project_amuse()
+            # fig = scatter_particles_xyz(self.king_amuse)
+            # pyplot.show(fig)
 
-            fig = scatter_particles_xyz(self.king_amuse)
-            pyplot.show(fig)
-
-            # Plot Sigma(R) at this time step
+            # Plot Sigma(R) vs R
+            king_model, dontcare, dontcare, king_converter = \
+                self.sample_deBoer2019_bestfit_king(Nstars=0)
             fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
             self.add_deBoer2019_to_fig(fig, show_King=True)
-            self.add_deBoer2019_sampled_to_ax(ax, parm="Sigma")
+            self.add_deBoer2019_sampled_to_ax(ax, king_model, king_amuse_sampled,
+                parm="Sigma", rmin=1e-4, rmax=1e3, Nbins=1024)
             ax.legend(fontsize=20)
-            pyplot.savefig("{0}{1}_isolation_{2:04d}.png".format(self.outdir, self.gc_name, i))
+            pyplot.savefig("{0}{1}_sampled.png".format(outdir, gc_name))
             pyplot.show(fig)
+            # pyplot.savefig("{0}{1}_isolation_{2:04d}.png".format(self.outdir, self.gc_name, i))
 
 
     def __str__(self):

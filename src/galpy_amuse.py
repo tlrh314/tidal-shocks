@@ -31,22 +31,28 @@ import limepy   # using tlrh314/limepy fork
 def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
         Rinit=[0.0, 0.0, 0.0] | units.kpc,  # x, y, z in kpc
         Vinit=[0.0, 0.0, 0.0] | units.km / units.s,  # vx, vy, vz in km / s
-        verbose=False):
+        verbose=False, timing=True):
 
-    # Setup the Limepy model
     start = time.time()
-    # CAUTION, we do **not** scale here because we scale later /w converter
-    model = limepy.limepy(W0, M=1, rt=1, g=g, verbose=verbose, project=True)
-    if verbose:
+
+    # Setup the Limepy model - CAUTION: do **not** scale here b/c we use the
+    # AMUSE converter later to scale the model from Nbody to physical units.
+    model = limepy.limepy(W0, M=1, rt=1, g=g, verbose=verbose)
+    if timing:
         print("limepy.limepy took {0:.2f} s".format(time.time() - start))
 
-    # Sample the model using Limepy's built-in sample routine
+    # Sample the (unscaled) model using Limepy's built-in sample routine
     start = time.time()
     particles = limepy.sample(model, N=Nstars, seed=seed, verbose=verbose)
-    if verbose:
+    if timing:
         print("limepy.sample took {0:.2f} s".format(time.time() - start))
 
+    # Now let limepy scale the model because that's what we'll return later
+    # and we kinda like the model to be in physical units. Also project :-).
+    model = limepy.limepy(W0, M=M, rt=rt, g=g, verbose=verbose, project=True)
+
     # Move the Limepy particles into an AMUSE datamodel Particles instance
+    # Note that we use nbody units here and the AMUSE converter to scale afterwards
     start = time.time()
     amuse = Particles(size=Nstars)
     amuse.x = particles.x | nbody_system.length
@@ -56,26 +62,28 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     amuse.vy = particles.vy | nbody_system.length / nbody_system.time
     amuse.vz = particles.vz | nbody_system.length / nbody_system.time
     amuse.mass = particles.m | nbody_system.mass
-    if verbose:
+    if timing:
         print("convert to AMUSE took {0:.2f} s".format(time.time() - start))
 
     # Setup the converter to pass to the AMUSE Nbody code
     converter = nbody_system.nbody_to_si(M | units.MSun, rt | units.parsec)
-    print(amuse.sorted_by_attribute('key')[0:3])
+
+    # And apply the converter to scale the Nbody units to physical units. The
+    # converter can later be passed to the Nbody solver and we no longer need
+    # to worry about the physical units as that will be handled by AMUSE :-)
     amuse = ParticlesWithUnitsConverted(amuse, converter.as_converter_from_si_to_generic())
-    print(amuse.sorted_by_attribute('key')[0:3])
 
-    # Add the initial position and velocity vectors of the GC within the Galaxy
-    # TODO: convert parsec and km/s to generic using our converter
-    # amuse.x += Rinit[0]
-    # amuse.y += Rinit[1]
-    # amuse.z += Rinit[2]
-    # amuse.vx += Vinit[0]
-    # amuse.vy += Vinit[1]
-    # amuse.vz += Vinit[2]
+    # Move particles to center of mass
+    amuse.move_to_center()
 
-    # Let limepy scale the model; the converter scaled amuse Nbody realisation
-    model = limepy.limepy(W0, M=M, rt=rt, g=g, verbose=verbose, project=True)
+    # Finally, add the initial position and velocity vectors of the GC within the Galaxy
+    amuse.x += Rinit[0]
+    amuse.y += Rinit[1]
+    amuse.z += Rinit[2]
+    amuse.vx += Vinit[0]
+    amuse.vy += Vinit[1]
+    amuse.vz += Vinit[2]
+
     return model, particles, amuse, converter
 
 
