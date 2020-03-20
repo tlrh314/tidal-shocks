@@ -1,9 +1,6 @@
 import os
 import sys
 import time
-import glob
-import copy
-import logging
 import platform
 
 import numpy
@@ -14,24 +11,26 @@ from matplotlib import pyplot
 from matplotlib.font_manager import FontProperties
 pyplot.style.use("tlrh")
 from amuse.units import units
-from amuse.io import read_set_from_file
 
-
-from tlrh_profiles import (
+from limepy_wrapper import (
+    king_wrapper,
+    wilson_wrapper,
     limepy_wrapper,
-    spes_wrapper,
+    spes_wrapper
+)
+from emcee_wrapper import (
     minimise_chisq,
-    log_likelihood,
     run_mcmc,
-    inspect_chains,
     get_tau,
     get_flat_samples,
 )
-from galpy_amuse import limepy_to_amuse
-from tlrh_datamodel import get_radial_profiles
-from tlrh_datamodel import project_amuse_profiles
-from tlrh_datamodel import scatter_particles_xyz
-from tlrh_datamodel import print_particleset_info
+from amuse_wrapper import (
+    get_radial_profiles,
+    project_amuse_profiles,
+    scatter_particles_xyz,
+    print_particleset_info,
+)
+from galpy_amuse_wrapper import limepy_to_amuse
 
 BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
 if "/limepy" not in sys.path:
@@ -52,16 +51,16 @@ from data.parse_deBoer_2019 import parse_deBoer_2019_fits
 from data.parse_deBoer_2019 import parse_deBoer_2019_stitched_profiles
 
 
-class StarClusterSimulation(object):
+class MwGcObservation(object):
     def __init__(self, logger, gc_name):
         self.logger = logger
         self.gc_name = gc_name
         self._set_outdir()
-
         self._set_observations()
 
     def _set_outdir(self):
-        self.outdir = "{}/tidalshocks/out/{}/".format(BASEDIR, self.gc_name)
+        self.gc_slug = self.gc_name.replace(" ", "").lower()
+        self.outdir = "{}/tidalshocks/out/{}/".format(BASEDIR, self.gc_slug)
         if not os.path.exists(self.outdir) or not os.path.isdir(self.outdir):
             os.mkdir(self.outdir)
             self.logger.debug("  Created outdir {0}\n".format(self.outdir))
@@ -174,7 +173,7 @@ class StarClusterSimulation(object):
             self.fit["king"]["initial"] = [W0_deB19_king, M_deB19_king, rt_deB19_king]
             self.fit["king"]["deB19_chi2"] = self.deB19_fit["chi2_king"]
             self.fit["king"]["fit_labels"] = ["W_0", "M", "r_t"]
-            self.fit["king"]["model"] = lambda x, W0, M, rt: limepy_wrapper(x, W0, M, rt, g=1)
+            self.fit["king"]["model"] = king_wrapper
         elif model == "wilson":
             W0_deB19_wilson = self.deB19_fit["W_wil"]
             M_deB19_wilson = self.deB19_fit["M_wil"]
@@ -182,7 +181,7 @@ class StarClusterSimulation(object):
             self.fit["wilson"]["initial"] = [W0_deB19_wilson, M_deB19_wilson, rt_deB19_wilson]
             self.fit["wilson"]["deB19_chi2"] = self.deB19_fit["chi2_wil"]
             self.fit["wilson"]["fit_labels"] = ["W_0", "M", "r_t"]
-            self.fit["wilson"]["model"] = lambda x, W0, M, rt: limepy_wrapper(x, W0, M, rt, g=2)
+            self.fit["wilson"]["model"] = wilson_wrapper
         elif model == "limepy":
             W0_deB19_lime = self.deB19_fit["W_lime"]
             M_deB19_lime = self.deB19_fit["M_lime"]
@@ -191,7 +190,7 @@ class StarClusterSimulation(object):
             self.fit["limepy"]["initial"] = [W0_deB19_lime, M_deB19_lime, rt_deB19_lime, g_deB19_lime]
             self.fit["limepy"]["deB19_chi2"] = self.deB19_fit["chi2_lime"]
             self.fit["limepy"]["fit_labels"] = ["W_0", "M", "r_t", "g"]
-            self.fit["limepy"]["model"] = lambda x, W0, M, rt, g: limepy_wrapper(x, W0, M, rt, g=g)  # g free
+            self.fit["limepy"]["model"] = limepy_wrapper
         elif model == "spes":
             W0_deB19_spes = self.deB19_fit["W_pe"]
             B_deB19_spes = 1 - numpy.power(10, self.deB19_fit["log1minB_pe"])
@@ -211,9 +210,7 @@ class StarClusterSimulation(object):
         self.fit[model]["soln"] = minimise_chisq(self.fit[model]["initial"],
             self.fit_x, self.fit_y, self.fit_yerr, self.fit[model]["model"]
         )
-        ding = -log_likelihood(self.fit[model]["soln"].x, self.fit_x,
-                self.fit_y, self.fit_yerr, self.fit[model]["model"])
-        print(ding)
+        # chisq = self.fit[model]["soln"].fun
         if verbose:
             self.logger.info("minimise_chisq took {:.2f} seconds".format(
                 time.time() - start))
@@ -221,6 +218,7 @@ class StarClusterSimulation(object):
             for label, mle in zip(self.fit[model]["fit_labels"], self.fit[model]["soln"].x):
                 self.logger.info("  {} = {:.3f}".format(label, mle))
             self.logger.info("")
+            self.logger.info("minimise_chisq full return\n{}".format(self.fit[model]["soln"]))
 
         if mcmc:
             self.fit[model]["mcmc_mle"] = []
@@ -229,11 +227,10 @@ class StarClusterSimulation(object):
             start = time.time()
             self.fit[model]["sampler"] = run_mcmc(self.fit[model]["soln"].x,
                 self.fit_x, self.fit_y, self.fit_yerr, self.fit[model]["model"],
-                Nwalkers=Nwalkers, Nsamples=Nsamples, progress=progress)
+                self.outdir, Nwalkers=Nwalkers, Nsamples=Nsamples, progress=progress)
             if verbose:
                 self.logger.info("run_mcmc took {:.2f} seconds".format(
                     time.time() - start))
-            # fig = inspect_chains(self.fit[model]["sampler"], self.fit[model]["fit_labels"])
             self.fit[model]["tau"] = get_tau(self.fit[model]["sampler"])
             self.fit[model]["flat_samples"] = \
                 get_flat_samples(self.fit[model]["sampler"], self.fit[model]["tau"])
@@ -266,7 +263,6 @@ class StarClusterSimulation(object):
         W0_deB19 = self.deB19_fit["W_king"]
         M_deB19 = self.deB19_fit["M_king"]
         rt_deB19 = parsec2arcmin(self.deB19_fit["rt_king"], self.distance_kpc)
-        # king_model, king_limepy_sampled, king_amuse_sampled, king_converter = \
         return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=1,
             Nstars=Nstars, verbose=verbose)
 
@@ -274,7 +270,6 @@ class StarClusterSimulation(object):
         W0_deB19 = self.deB19_fit["W_wil"]
         M_deB19 = self.deB19_fit["M_wil"]
         rt_deB19 = parsec2arcmin(self.deB19_fit["rt_wil"], self.distance_kpc)
-        # wilson_model, wilson_limepy_sampled, wilson_amuse_sampled, wilson_converter = \
         return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=2,
             Nstars=Nstars, verbose=verbose)
 
@@ -283,7 +278,6 @@ class StarClusterSimulation(object):
         g_deB19 = self.deB19_fit["g_lime"]
         M_deB19 = self.deB19_fit["M_lime"]
         rt_deB19 = parsec2arcmin(self.deB19_fit["rt_lime"], self.distance_kpc)
-        # limepy_model, limepy_limepy_sampled, limepy_amuse_sampled, limepy_converter = \
         return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=g_deB19,
             Nstars=Nstars, verbose=verbose)
 
@@ -349,73 +343,27 @@ class StarClusterSimulation(object):
             facecolor="grey", edgecolor="grey", alpha=0.2, transform=trans)
 
 
-    def analyse_isolation(self, model, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
-        snap_base = "{}{}_isolation_*.hdf5".format(self.outdir, self.gc_name)
-        snapshots = sorted(
-            glob.glob(snap_base)
-        )
-        print("Found {0} snapshots".format(len(snapshots)))
-
-        for i, fname in enumerate(snapshots):
-            print("  Loading snapshot: {0}".format(fname))
-            Tsnap = fname.split("T=")[-1].split("_i")[0] | units.Myr
-            stars = read_set_from_file(fname, "hdf5")
-            print(stars.total_mass().as_quantity_in(units.MSun))
-            print(stars.center_of_mass().as_quantity_in(units.parsec))
-            # Tsnap = stars.get_timestamp()  # if stars.savepoint(time) would have been used
-            # However, ParticlesWithUnitsConverted does not have savepoint whereas
-            # Particles does...
-            print("  This snapshot was saved at T={0}".format(Tsnap.as_quantity_in(units.Myr)))
-            print("")
-            modelname = "King, loaded, T={0} Myr".format(Tsnap.value_in(units.Myr))
-            # print_particleset_info(stars, converter, modelname)
-
-            # fig = scatter_particles_xyz(self.king_amuse)
-            # pyplot.show(fig)
-
-            # Plot Sigma(R) vs R
-            fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
-            self.add_deBoer2019_to_fig(fig, show_King=True)
-            fig.suptitle("{0} at T={1} Myr".format(self.gc_name,
-                Tsnap.value_in(units.Myr)), fontsize=22)
-            self.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
-                parm="rho", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
-            self.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
-                parm="Sigma", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
-            ax.legend(fontsize=20)
-            pyplot.savefig("{0}{1}_isolation_{2:04d}.png".format(self.outdir, self.gc_name, i))
-            pyplot.show(fig)
-
-            # Mass
-            fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
-            self.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
-                parm="mc", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
-            pyplot.show(fig)
-
-
     def __str__(self):
-        s = "StarClusterSimulation for {0}\n".format(self.gc_name)
+        s = "MwGcObservation for {0}\n".format(self.gc_name)
         s += "  R_sun: {0:.2f} kpc (Harris 1996, 2010 ed.)\n".format(
             self.distance_kpc)
         s += "  rJ:    {0:.2f} pc (Balbinot & Gieles 2018) --> {1:.2f}'\n".format(
             self.rJ_pc, self.rJ)
-        s += "\n"
-        s += "  outdir: {}".format(self.outdir)
-        s += "\n"
         return s
 
 
 if __name__ == "__main__":
+    import logging
     logging.getLogger("keyring").setLevel(logging.CRITICAL)
     logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format="%(message)s")
     logger = logging.getLogger(__file__)
     logger.info("Running {0}".format(__file__))
 
-    sim = StarClusterSimulation(logger, "NGC 104")
-    logger.info(sim)
+    obs = MwGcObservation(logger, "NGC 104")
+    logger.info(obs)
 
     fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
     pyplot.switch_backend("TkAgg")
-    sim.add_deBoer2019_to_fig(fig)
+    obs.add_deBoer2019_to_fig(fig)
     pyplot.show()

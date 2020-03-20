@@ -68,17 +68,19 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
 
     print("limepy_to_amuse, pre-converter business")
     print("  G:      {}".format(nbody_system.G))
-    print("  com:    {}".format(amuse.center_of_mass())) # .value_in(units.parsec)))
+    print("  com:    {}".format(amuse.center_of_mass()))
     print("  comvel: {}".format(amuse.center_of_mass_velocity()))
-    Mtot = amuse.total_mass()  # .as_quantity_in(units.MSun)
+    Mtot = amuse.total_mass()
     print("  Mtot:   {}".format(Mtot))
-    Ekin = amuse.kinetic_energy()  # .as_quantity_in(units.J)
+    Ekin = amuse.kinetic_energy()
     print("  Ekin:   {}".format(Ekin))
-    Epot = amuse.potential_energy(G=nbody_system.G)  # .as_quantity_in(units.J)
+    Epot = amuse.potential_energy(G=nbody_system.G)
     print("  Epot:   {}".format(Epot))
     print("  Ekin/Epot: {}".format(Ekin/Epot))
-    Ltot = amuse.total_angular_momentum()  # .as_quantity_in(units.MSun*units.parsec**2/units.Myr)
+    Ltot = amuse.total_angular_momentum()
     print("  Ltot:   {}".format(Ltot))
+    ptot = amuse.total_momentum()
+    print("  ptot:   {}".format(ptot))
 
     # Setup the converter to pass to the AMUSE Nbody code
     converter = nbody_system.nbody_to_si(M | units.MSun, rt | units.parsec)
@@ -97,7 +99,8 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     amuse.vz += Vinit[2]
 
     print("limepy_to_amuse, post-converter business")
-    print("  com:    {}".format(amuse.center_of_mass().value_in(units.parsec)))
+    print("  com:    {}".format(amuse.center_of_mass().as_quantity_in(units.parsec)))
+    print("  comvel: {}".format(amuse.center_of_mass_velocity().as_quantity_in(units.km/units.s)))
     Mtot = amuse.total_mass().as_quantity_in(units.MSun)
     print("  Mtot:   {}".format(Mtot))
     Ekin = amuse.kinetic_energy().as_quantity_in(units.J)
@@ -107,6 +110,8 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     print("  Ekin/Epot: {}".format(Ekin/Epot))
     Ltot = amuse.total_angular_momentum().as_quantity_in(units.MSun*units.parsec**2/units.Myr)
     print("  Ltot:   {}".format(Ltot))
+    ptot = amuse.total_momentum().as_quantity_in(units.MSun*units.parsec/units.Myr)
+    print("  ptot:   {}".format(ptot))
 
     # Now let limepy scale the model because that's what we'll return
     # and we kinda like the model to be in physical units. Also project :-).
@@ -393,7 +398,7 @@ def compare_galpy_and_amuse(logger, h19_o, h19_combined, N=1,
     return o
 
 
-def gc_in_isolation(sim, ICs, converter, ts=numpy.linspace(0.0, 1.0, 1000) * u.Gyr,
+def gc_in_isolation(obs, ICs, converter, ts=numpy.linspace(0.0, 1.0, 1000) * u.Gyr,
         tsnap=0.1|units.Myr, softening=0.1|units.parsec, number_of_workers=1):
     """ Integrate the GC without external potential in AMUSE /w Gadget2 """
 
@@ -403,7 +408,7 @@ def gc_in_isolation(sim, ICs, converter, ts=numpy.linspace(0.0, 1.0, 1000) * u.G
         tstart.value_in(units.Gyr), tend.value_in(units.Gyr), Nsteps, dt.value_in(units.Myr)))
 
     def dump_snapshot(stars, time, i):
-        fname = "{}{}_isolation_T={:.2f}_i={:04d}.hdf5".format(sim.outdir, sim.gc_name,
+        fname = "{}{}_isolation_T={:010.2f}_i={:04d}.hdf5".format(obs.outdir, obs.gc_name,
             time.value_in(units.Myr), i)
         print("Dumping snapshot: {0}".format(fname))
         if os.path.exists(fname) and os.path.isfile(fname):
@@ -445,13 +450,6 @@ def new_argument_parser():
     args.add_argument("-np", "--number_of_workers", dest="number_of_workers", default=4,
         type=int, help="Number of workers")
 
-    args.add_argument("--example", dest="run_example", default=False,
-        action="store_true", help="Run the example")
-    args.add_argument("--test1", dest="run_test1", default=False,
-        action="store_true", help="Simulate N=1 /w galpy and AMUSE to compare integrators")
-    args.add_argument("--isolation", dest="run_isolation", default=False,
-        action="store_true", help="Simulate GC density profile in isolation")
-
     return args
 
 
@@ -476,53 +474,25 @@ if __name__ == "__main__":
     logger.info("  softening: {0}".format(args.softening))
     logger.info("  number_of_workers: {0}\n".format(args.number_of_workers))
 
-    logger.info("  run_example: {0}".format(args.run_example))
-    logger.info("  run_test1: {0}".format(args.run_test1))
-    logger.info("  run_isolation: {0}\n".format(args.run_isolation))
+    from mw_gc_observation import MwGcObservation
+    obs = MwGcObservation(logger, args.gc_name)
+    logger.info(obs)
 
-    if "/tidal-shocks" not in sys.path:
-        sys.path.insert(0, "{}/tidal-shocks/src".format(BASEDIR))
-    from gc_simulation import StarClusterSimulation
+    # Example usage
+    stars, converter = setup_cluster()
 
-    sim = StarClusterSimulation(logger, args.gc_name)
-    logger.info(sim)
+    com = numpy.zeros((Nsteps,3))
+    times = numpy.zeros(Nsteps)
+    def calculate_com_and_plot(stars, time, i):
+        c = stars.center_of_mass().value_in(units.parsec)
+        com[i][:] = c
+        times[i] = time.value_in(units.Myr)
+        plot_stars(stars, time, i)
+        return stars
 
-    if args.run_isolation:
-        # Sample initial conditions for deBoer+ 2019 bestfit King model
-        king_model, king_limepy_sampled, king_amuse_sampled, king_converter = \
-            sim.sample_deBoer2019_bestfit_king(Nstars=args.Nstars)
+    integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
+        stars, converter, softening=softening,
+        do_something=calculate_com_and_plot
+    )
 
-        # Plot the initial conditions as a sanity check
-        if "freya" in platform.node(): pyplot.switch_backend("agg")
-        fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
-        sim.add_deBoer2019_to_fig(fig, show_King=True)
-        sim.add_deBoer2019_sampled_to_ax(ax, king_amuse_sampled, parm="Sigma",
-            model=king_model, rmin=1e-4, rmax=1e3, Nbins=int(numpy.sqrt(args.Nstars)))
-        ax.legend(fontsize=20)
-        fname = "{0}{1}_sampled_ICs.png".format(sim.outdir, sim.gc_name)
-        pyplot.savefig(fname)
-        pyplot.close(fig)
-        logger.info("  Saved: {0}".format(fname))
-
-        # Run the simulation
-        gc_in_isolation(sim, king_amuse_sampled, king_converter, ts=ts, tsnap=tsnap,
-            softening=softening, number_of_workers=args.number_of_workers)
-
-    if args.run_example:
-        stars, converter = setup_cluster()
-
-        com = numpy.zeros((Nsteps,3))
-        times = numpy.zeros(Nsteps)
-        def calculate_com_and_plot(stars, time, i):
-            c = stars.center_of_mass().value_in(units.parsec)
-            com[i][:] = c
-            times[i] = time.value_in(units.Myr)
-            plot_stars(stars, time, i)
-            return stars
-
-        integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
-            stars, converter, softening=softening,
-            do_something=calculate_com_and_plot
-        )
-
-        logger.info(com)
+    logger.info(com)
