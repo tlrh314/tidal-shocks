@@ -66,21 +66,21 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     if timing:
         print("convert to AMUSE took {0:.2f} s".format(time.time() - start))
 
-    print("limepy_to_amuse, pre-converter business")
-    print("  G:      {}".format(nbody_system.G))
-    print("  com:    {}".format(amuse.center_of_mass()))
-    print("  comvel: {}".format(amuse.center_of_mass_velocity()))
+    print("\nlimepy_to_amuse, pre-converter business")
+    print("  G:         {}".format(nbody_system.G))
+    print("  com:       {}".format(amuse.center_of_mass()))
+    print("  comvel:    {}".format(amuse.center_of_mass_velocity()))
     Mtot = amuse.total_mass()
-    print("  Mtot:   {}".format(Mtot))
+    print("  Mtot:      {}".format(Mtot))
     Ekin = amuse.kinetic_energy()
-    print("  Ekin:   {}".format(Ekin))
+    print("  Ekin:      {}".format(Ekin))
     Epot = amuse.potential_energy(G=nbody_system.G)
-    print("  Epot:   {}".format(Epot))
+    print("  Epot:      {}".format(Epot))
     print("  Ekin/Epot: {}".format(Ekin/Epot))
     Ltot = amuse.total_angular_momentum()
-    print("  Ltot:   {}".format(Ltot))
+    print("  Ltot:      {}".format(Ltot))
     ptot = amuse.total_momentum()
-    print("  ptot:   {}".format(ptot))
+    print("  ptot:      {}".format(ptot))
 
     # Setup the converter to pass to the AMUSE Nbody code
     converter = nbody_system.nbody_to_si(M | units.MSun, rt | units.parsec)
@@ -98,20 +98,20 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     amuse.vy += Vinit[1]
     amuse.vz += Vinit[2]
 
-    print("limepy_to_amuse, post-converter business")
-    print("  com:    {}".format(amuse.center_of_mass().as_quantity_in(units.parsec)))
-    print("  comvel: {}".format(amuse.center_of_mass_velocity().as_quantity_in(units.km/units.s)))
+    print("\nlimepy_to_amuse, post-converter business")
+    print("  com:       {}".format(amuse.center_of_mass().as_quantity_in(units.parsec)))
+    print("  comvel:    {}".format(amuse.center_of_mass_velocity().as_quantity_in(units.km/units.s)))
     Mtot = amuse.total_mass().as_quantity_in(units.MSun)
-    print("  Mtot:   {}".format(Mtot))
+    print("  Mtot:      {}".format(Mtot))
     Ekin = amuse.kinetic_energy().as_quantity_in(units.J)
-    print("  Ekin:   {}".format(Ekin))
+    print("  Ekin:      {}".format(Ekin))
     Epot = amuse.potential_energy().as_quantity_in(units.J)
-    print("  Epot:   {}".format(Epot))
+    print("  Epot:      {}".format(Epot))
     print("  Ekin/Epot: {}".format(Ekin/Epot))
     Ltot = amuse.total_angular_momentum().as_quantity_in(units.MSun*units.parsec**2/units.Myr)
-    print("  Ltot:   {}".format(Ltot))
+    print("  Ltot:      {}".format(Ltot))
     ptot = amuse.total_momentum().as_quantity_in(units.MSun*units.parsec/units.Myr)
-    print("  ptot:   {}".format(ptot))
+    print("  ptot:      {}".format(ptot))
 
     # Now let limepy scale the model because that's what we'll return
     # and we kinda like the model to be in physical units. Also project :-).

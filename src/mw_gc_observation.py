@@ -178,7 +178,7 @@ class MwGcObservation(object):
         ax.set_ylabel("$\sigma_{1D}$ [km/s]")
         ax.legend(loc="lower left", fontsize=16, frameon=False)
 
-    def fit_model_to_deBoer2019(self, model="king",
+    def fit_model_to_deBoer2019(self, model_name="king",
             mcmc=True, Nwalkers=32, Nsamples=500, progress=True,
             mask_2BGlev=False, mask_rtie=False, verbose=False):
         self.fit_x = self.deB19_stitched["rad"]
@@ -197,24 +197,24 @@ class MwGcObservation(object):
             self.fit_y = self.fit_y[ikeep]
             self.fit_yerr = self.fit_yerr[ikeep]
 
-        # if model == "woolley": --> g=0
-        if model == "king":
+        # if model_name == "woolley": --> g=0
+        if model_name == "king":
             W0_deB19_king = self.deB19_fit["W_king"]
             M_deB19_king = self.deB19_fit["M_king"]
             rt_deB19_king = parsec2arcmin(self.deB19_fit["rt_king"], self.distance_kpc)
             self.fit["king"]["initial"] = [W0_deB19_king, M_deB19_king, rt_deB19_king]
             self.fit["king"]["deB19_chi2"] = self.deB19_fit["chi2_king"]
             self.fit["king"]["fit_labels"] = ["W_0", "M", "r_t"]
-            self.fit["king"]["model"] = king_wrapper
-        elif model == "wilson":
+            self.fit["king"]["function"] = king_wrapper
+        elif model_name == "wilson":
             W0_deB19_wilson = self.deB19_fit["W_wil"]
             M_deB19_wilson = self.deB19_fit["M_wil"]
             rt_deB19_wilson = parsec2arcmin(self.deB19_fit["rt_wil"], self.distance_kpc)
             self.fit["wilson"]["initial"] = [W0_deB19_wilson, M_deB19_wilson, rt_deB19_wilson]
             self.fit["wilson"]["deB19_chi2"] = self.deB19_fit["chi2_wil"]
             self.fit["wilson"]["fit_labels"] = ["W_0", "M", "r_t"]
-            self.fit["wilson"]["model"] = wilson_wrapper
-        elif model == "limepy":
+            self.fit["wilson"]["function"] = wilson_wrapper
+        elif model_name == "limepy":
             W0_deB19_lime = self.deB19_fit["W_lime"]
             M_deB19_lime = self.deB19_fit["M_lime"]
             rt_deB19_lime = parsec2arcmin(self.deB19_fit["rt_lime"], self.distance_kpc)
@@ -222,61 +222,66 @@ class MwGcObservation(object):
             self.fit["limepy"]["initial"] = [W0_deB19_lime, M_deB19_lime, rt_deB19_lime, g_deB19_lime]
             self.fit["limepy"]["deB19_chi2"] = self.deB19_fit["chi2_lime"]
             self.fit["limepy"]["fit_labels"] = ["W_0", "M", "r_t", "g"]
-            self.fit["limepy"]["model"] = limepy_wrapper
-        elif model == "spes":
+            self.fit["limepy"]["function"] = limepy_wrapper
+        elif model_name == "spes":
             W0_deB19_spes = self.deB19_fit["W_pe"]
             B_deB19_spes = 1 - numpy.power(10, self.deB19_fit["log1minB_pe"])
             eta_deB19_spes = self.deB19_fit["eta_pe"]
             M_deB19_spes = self.deB19_fit["M_pe"]
             rt_deB19_spes = parsec2arcmin(self.deB19_fit["rt_pe"], self.distance_kpc)
             # fpe_deB19_spes = numpy.power(10, self.deB19_fit["log_fpe"])
-            self.fit["spes"]["initial"] = [W0_deB19_spes, B_deB19_spes,
-                    eta_deB19_spes, M_deB19_spes, rt_deB19_spes]
+            self.fit["spes"]["initial"] = [
+                W0_deB19_spes, B_deB19_spes, eta_deB19_spes, M_deB19_spes,
+                rt_deB19_spes, 25*self.rJ/rt_deB19_spes
+            ]
             self.fit["spes"]["deB19_chi2"] = self.deB19_fit["chi2_pe"]
-            self.fit["spes"]["fit_labels"] = ["W_0", "B", "eta", "M", "r_t"]
-            self.fit["spes"]["model"] = lambda x, W0, B, eta, M, rt: spes_wrapper(
-                x, W0, B, eta, M, rt, 25*self.rJ/rt)
+            self.fit["spes"]["fit_labels"] = ["W_0", "B", "eta", "M", "r_t", "nrt"]
+            self.fit["spes"]["function"] = spes_wrapper
 
         # Minimise chi^2
         if verbose: start = time.time()
-        self.fit[model]["soln"] = minimise_chisq(self.fit[model]["initial"],
-            self.fit_x, self.fit_y, self.fit_yerr, self.fit[model]["model"]
+        self.fit[model_name]["soln"] = minimise_chisq(
+            self.fit[model_name]["initial"], self.fit_x, self.fit_y, self.fit_yerr,
+            self.fit[model_name]["function"]
         )
-        # chisq = self.fit[model]["soln"].fun
+        # chisq = self.fit[model_name]["soln"].fun
         if verbose:
             self.logger.info("minimise_chisq took {:.2f} seconds".format(
                 time.time() - start))
             self.logger.info("Maximum likelihood estimates for minimise_chisq:")
-            for label, mle in zip(self.fit[model]["fit_labels"], self.fit[model]["soln"].x):
+            for label, mle in zip(self.fit[model_name]["fit_labels"],
+                    self.fit[model_name]["soln"].x):
                 self.logger.info("  {} = {:.3f}".format(label, mle))
             self.logger.info("")
-            self.logger.info("minimise_chisq full return\n{}".format(self.fit[model]["soln"]))
+            self.logger.info("minimise_chisq full return\n{}".format(
+                self.fit[model_name]["soln"]))
 
         if mcmc:
-            self.fit[model]["mcmc_mle"] = []
-            self.fit[model]["mcmc_err_up"] = []
-            self.fit[model]["mcmc_err_down"] = []
+            self.fit[model_name]["mcmc_mle"] = []
+            self.fit[model_name]["mcmc_err_up"] = []
+            self.fit[model_name]["mcmc_err_down"] = []
             start = time.time()
-            self.fit[model]["sampler"] = run_mcmc(self.fit[model]["soln"].x,
-                self.fit_x, self.fit_y, self.fit_yerr, self.fit[model]["model"],
-                self.outdir, Nwalkers=Nwalkers, Nsamples=Nsamples, progress=progress)
+            self.fit[model_name]["sampler"] = run_mcmc(self.fit[model_name]["soln"].x,
+                self.fit_x, self.fit_y, self.fit_yerr, self.fit[model_name]["function"],
+                self.outdir, model_name, Nwalkers=Nwalkers, Nsamples=Nsamples,
+                progress=progress)
             if verbose:
                 self.logger.info("run_mcmc took {:.2f} seconds".format(
                     time.time() - start))
-            self.fit[model]["tau"] = get_tau(self.fit[model]["sampler"])
-            self.fit[model]["flat_samples"] = \
-                get_flat_samples(self.fit[model]["sampler"], self.fit[model]["tau"])
+            self.fit[model_name]["tau"] = get_tau(self.fit[model_name]["sampler"])
+            self.fit[model_name]["flat_samples"] = \
+                get_flat_samples(self.fit[model_name]["sampler"], self.fit[model_name]["tau"])
 
-            ndim = len(self.fit[model]["initial"])
-            self.fit[model]["mcmc_mle"] = []
-            self.fit[model]["mcmc_err_down"] = []
-            self.fit[model]["mcmc_err_up"] = []
+            ndim = len(self.fit[model_name]["initial"])
+            self.fit[model_name]["mcmc_mle"] = []
+            self.fit[model_name]["mcmc_err_down"] = []
+            self.fit[model_name]["mcmc_err_up"] = []
             for i in range(ndim):
-                mcmc = numpy.percentile(self.fit[model]["flat_samples"][:, i], [16, 50, 84])
+                mcmc = numpy.percentile(self.fit[model_name]["flat_samples"][:, i], [16, 50, 84])
                 q = numpy.diff(mcmc)
-                self.fit[model]["mcmc_mle"].append(mcmc[1])
-                self.fit[model]["mcmc_err_down"].append(q[0])
-                self.fit[model]["mcmc_err_up"].append(q[1])
+                self.fit[model_name]["mcmc_mle"].append(mcmc[1])
+                self.fit[model_name]["mcmc_err_down"].append(q[0])
+                self.fit[model_name]["mcmc_err_up"].append(q[1])
 
     def add_deBoer2019_to_fig(self, fig,
             show_King=False, show_Wilson=False, show_limepy=False, show_spes=False,
@@ -313,10 +318,10 @@ class MwGcObservation(object):
         return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=g_deB19,
             Nstars=Nstars, verbose=verbose)
 
-    def add_deBoer2019_sampled_to_ax(self, ax, sampled, parm="rho", model=None,
+    def add_deBoer2019_sampled_to_ax(self, ax, sampled, parm="rho", limepy_model=None,
             rmin=1e-3, rmax=1e3, Nbins=256, smooth=False, timing=True):
         if parm not in ["rho", "Sigma", "mc"]:
-            self.logger.error("ERROR: cannot add {0} to ax".format(parm))
+            self.logger.error("ERROR: cannot add parm '{}' to ax".format(parm))
             return
 
         start = time.time()
@@ -327,7 +332,7 @@ class MwGcObservation(object):
             print("get_radial_profiles took {0:.2f} s".format(time.time() - start))
 
         if parm == "rho":
-            if model is not None: ax.plot(model.r, model.rho)
+            if limepy_model is not None: ax.plot(limepy_model.r, limepy_model.rho)
             rho_plot = rho_of_r.value_in(units.MSun/units.parsec**3)
             # if smooth:
             #     rho_plot = scipy.signal.savgol_filter(rho_of_r, 21, 2)
@@ -339,7 +344,7 @@ class MwGcObservation(object):
             ax.plot(R, Sigma, c="magenta", lw=2,
                 drawstyle="steps-mid", label=r"sampled $\Sigma(R)$")
         elif parm == "mc":
-            if model is not None: ax.plot(model.r, model.mc)
+            if limepy_model is not None: ax.plot(limepy_model.r, limepy_model.mc)
             ax.plot(radii.value_in(units.parsec),
                 M_below_r.value_in(units.MSun),
                 c="r", lw=2, drawstyle="steps-mid", label=r"sampled $M(<r)$")
@@ -356,9 +361,9 @@ class MwGcObservation(object):
         font = FontProperties()
         font.set_size(12)
         font.set_weight("bold")
-        if model is not None:
+        if limepy_model is not None:
             for n, r, c in zip(["King core", "half-mass", "virial", "truncation"],
-                    [model.r0, model.rh, model.rv, model.rt],
+                    [limepy_model.r0, limepy_model.rh, limepy_model.rv, limepy_model.rt],
                     # ["#980043", "#dd1c77", "#df65b0", "#d7b5d8"]
                     ["orange", "green", "blue", "red"]
             ):
@@ -367,13 +372,6 @@ class MwGcObservation(object):
                 # ax.axvline(r, c=c, ls="-", lw=2)
                 # ax.text(1.05*r, 0.98, "{0}: {1:.3f}".format(n, r), c=c, rotation=90,
                 #         fontsize=12, ha="left", va="top", transform=trans)  #, fontproperties=font)
-
-        # TODO: Add force softening
-        xlim = ax.get_xlim()
-        softening = parsec2arcmin(0.1, self.distance_kpc)
-        ax.fill_between(numpy.arange(xlim[0], softening, 0.01), 0, 1,
-            facecolor="grey", edgecolor="grey", alpha=0.2, transform=trans)
-
 
     def __str__(self):
         s = "MwGcObservation for {0}\n".format(self.gc_name)

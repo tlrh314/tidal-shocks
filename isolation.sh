@@ -1,11 +1,11 @@
 #!/bin/bash -l
 # Standard output and error:
-#SBATCH -o ./tjob.out.%j
-#SBATCH -e ./tjob.err.%j
+#SBATCH -o ./tjob.%j.out
+#SBATCH -e ./tjob.%j.err
 # Initial working directory:
 #SBATCH -D ./
 # Job Name:
-#SBATCH -J submit.sh
+#SBATCH -J isolation.sh
 # Queue (Partition):
 #SBATCH --partition=p.24h
 # Number of nodes and MPI tasks per node:
@@ -17,10 +17,8 @@
 #SBATCH --mail-user=timoh@rzg.mpg.de
 #
 # Wall clock limit:
-#SBATCH --time=08:00:00
+#SBATCH --time=24:00:00
 
-# MCMC fit
-# python src/tlrh_profiles.py -gc "NGC 104" -Nw 32 -Ns 50000 -Nb 1000 
-
-# Test stability of GC in isolation
-nice -n 19 python src/galpy_amuse.py -gc "NGC 104" -T 10 -dt 5 --isolation
+gc_name=$*
+echo "Running isolation.sh for gc_name: ${gc_name}"
+python src/test_stability_in_isolation.py -gc "${gc_name}" -m "king"

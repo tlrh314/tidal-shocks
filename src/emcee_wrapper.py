@@ -12,8 +12,8 @@ from multiprocessing import Pool
 from emcee.autocorr import AutocorrError
 
 
-def log_likelihood(theta, x, y, yerr, model):
-    ymodel = model(x, *theta)
+def log_likelihood(theta, x, y, yerr, function):
+    ymodel = function(x, *theta)
     sigma2 = yerr**2
     # Note that I added 2*numpy.pi in the logarithm of sigma2 wrt documentation
     return -0.5 * numpy.sum((y - ymodel)**2 / sigma2 + numpy.log(2*numpy.pi*sigma2))
@@ -28,9 +28,10 @@ def log_prior(theta):
         W0, M, rt, g = theta
         if 0 < W0 < 14 and 1e2 < M < 1e6 and 1 < rt < 300 and 0 < g < 3.5:
             return 0.0
-    elif len(theta) == 5:  # SPES
-        W0, B, eta, M, rt = theta
-        if 0 < W0 < 14 and 0 < B < 1 and 0 < eta < 1 and 1e2 < M < 1e6 and 1 < rt < 300:
+    elif len(theta) == 6:  # SPES
+        W0, B, eta, M, rt, nrt = theta
+        if ( 0 < W0 < 14 and 0 < B < 1 and 0 < eta < 1 and 1e2 < M < 1e6
+            and 1 < rt < 300 and 1 < nrt < 100 ):
             return 0.0
     # TODO: why 0.0 if parameter in range, and -inf if parameter not in range?
     # The documentation shows that p(m) is 1/5.5 if -5 < m < 1/2, but this
@@ -40,24 +41,25 @@ def log_prior(theta):
     return -numpy.inf
 
 
-def log_probability(theta, x, y, yerr, model):
+def log_probability(theta, x, y, yerr, function):
     lp = log_prior(theta)
     if not numpy.isfinite(lp):
         return -numpy.inf
-    return lp + log_likelihood(theta, x, y, yerr, model)
+    return lp + log_likelihood(theta, x, y, yerr, function)
 
 
-def minimise_chisq(initial, x, y, yerr, model):
+def minimise_chisq(initial, x, y, yerr, function):
     negative_log_likelihood = lambda *args: -log_likelihood(*args)
-    return scipy.optimize.minimize(negative_log_likelihood, initial, args=(x, y, yerr, model))
+    return scipy.optimize.minimize(negative_log_likelihood, initial,
+        args=(x, y, yerr, function))
 
 
-def run_mcmc(ml, x, y, yerr, model, outdir, Nwalkers=32, Nsamples=500,
-        rerun=False, progress=True):
+def run_mcmc(ml, x, y, yerr, function, outdir, model_name, Nwalkers=32,
+        Nsamples=500, rerun=False, progress=True):
     Ndim = len(ml)
     pos = ml + 1e-4 * numpy.random.randn(Nwalkers, Ndim)
 
-    fname = "{0}Emcee_{1}_{2}.h5".format(outdir, Nwalkers, Nsamples)
+    fname = "{}Emcee_{}_{}_{}.h5".format(outdir, model_name, Nwalkers, Nsamples)
     backend = emcee.backends.HDFBackend(fname)
     if os.path.exists(fname) and os.path.isfile(fname) and not rerun:
         print("  run_mcmc --> file exists: {}".format(fname))
@@ -66,7 +68,7 @@ def run_mcmc(ml, x, y, yerr, model, outdir, Nwalkers=32, Nsamples=500,
     backend.reset(Nwalkers, Ndim)
     with Pool() as pool:
         sampler = emcee.EnsembleSampler(Nwalkers, Ndim, log_probability,
-            args=(x, y, yerr, model), backend=backend, pool=pool)
+            args=(x, y, yerr, function), backend=backend, pool=pool)
         sampler.run_mcmc(pos, Nsamples, progress=progress);
     return sampler
 
@@ -115,14 +117,15 @@ def get_flat_samples(sampler, tau, discard=None, thin=None, verbose=False):
 
 def plot_corner(flat_samples, truths, labels):
     # Use the best-fit MLEs from deBoer+ 2019 as 'truths'
-    fig, axes = pyplot.subplots(3, 3, figsize=(16, 16), facecolor="white")
+    ndim = len(truths)
+    fig, axes = pyplot.subplots(ndim, ndim, figsize=(16, 16), facecolor="white")
     return corner.corner(flat_samples, bins=64, labels=labels, show_titles=True,
         truths=truths, plot_contours=False, quantiles=[0.16, 0.50, 0.84],
         top_ticks=True, fig=fig
     )
 
 
-def plot_results(obs, models=["king", "wilson", "limepy", "spes"],
+def plot_results(obs, model_names=["king", "wilson", "limepy", "spes"],
         x0=numpy.logspace(-3, 3, 256), size=100):
     fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
     obs.add_deBoer2019_to_fig(fig)
@@ -143,34 +146,37 @@ def plot_results(obs, models=["king", "wilson", "limepy", "spes"],
             "c": "r", "ls": "-",  "lw": 2,
         },
     }
-    for model in models:
-        if "initial" in obs.fit[model].keys():
-            kwargs_deB19[model]["label"] = kwargs_deB19[model]["label"].format(
-                obs.fit[model]["deB19_chi2"])
-            ax.plot(x0, obs.fit[model]["model"](x0, *obs.fit[model]["initial"]),
-                **kwargs_deB19[model])
-        if "soln" in obs.fit[model].keys():
-            ax.plot(x0, obs.fit[model]["model"](x0, *obs.fit[model]["soln"].x),
+    for model_name in model_names:
+        if "initial" in obs.fit[model_name].keys():
+            kwargs_deB19[model_name]["label"] = kwargs_deB19[model_name]["label"].format(
+                obs.fit[model_name]["deB19_chi2"])
+            ax.plot(x0, obs.fit[model_name]["function"](x0, *obs.fit[model_name]["initial"]),
+                **kwargs_deB19[model_name])
+        if "soln" in obs.fit[model_name].keys():
+            ax.plot(x0, obs.fit[model_name]["function"](x0, *obs.fit[model_name]["soln"].x),
                 c="k", lw=2, alpha=0.7, label="{0} ML, 'chi2'={1:.1f}".format(
-                    model, obs.fit[model]["soln"].fun))
+                    model_name, obs.fit[model_name]["soln"].fun))
 
             # TODO: soln.fun and calculated chi2 inconsistent because we actually
             # minimize -log_likelihood, which seems to be -0.5chi^2 + ln(2*pi*sigma2).
             # However, neither calculation retrieves deB19_chi2 :-(
-            ymodel = obs.fit[model]["model"](obs.fit_x, *obs.fit[model]["soln"].x)
+            ymodel = obs.fit[model_name]["function"](
+                obs.fit_x, *obs.fit[model_name]["soln"].x)
             sigma2 = obs.fit_yerr**2
             chisq = numpy.sum((obs.fit_y - ymodel)**2 / sigma2)
-            dof = len(obs.fit_x) - len(obs.fit[model]["soln"].x)
+            dof = len(obs.fit_x) - len(obs.fit[model_name]["soln"].x)
             print(chisq, 0.5*chisq, len(obs.fit_x), chisq/dof)
-        if "mcmc_mle" in obs.fit[model].keys():
-            ax.plot(x0, obs.fit[model]["model"](x0, *obs.fit[model]["mcmc_mle"], verbose=True),
+        if "mcmc_mle" in obs.fit[model_name].keys():
+            ax.plot(x0, obs.fit[model_name]["function"](x0,
+                *obs.fit[model_name]["mcmc_mle"], verbose=True),
                 c="r", lw=2, label="Emcee")
-        if "flat_samples" in obs.fit[model].keys():
-            size = min( size, len(obs.fit[model]["flat_samples"]) )
-            inds = numpy.random.randint(len(obs.fit[model]["flat_samples"]), size=size)
+        if "flat_samples" in obs.fit[model_name].keys():
+            size = min( size, len(obs.fit[model_name]["flat_samples"]) )
+            inds = numpy.random.randint(len(obs.fit[model_name]["flat_samples"]), size=size)
             for ind in inds:
-                sample = obs.fit[model]["flat_samples"][ind]
-                pyplot.plot(x0, obs.fit[model]["model"](x0, *sample[:3]), "C1", alpha=0.1)
+                sample = obs.fit[model_name]["flat_samples"][ind]
+                pyplot.plot(x0, obs.fit[model_name]["function"](
+                    x0, *sample), "C1", alpha=0.1)
 
     ax.legend(fontsize=20)
     return fig
@@ -184,8 +190,8 @@ def new_argument_parser():
     args.add_argument("-gc", "--gc_name", dest="gc_name", default="NGC 104",
         type=str, help="Name of the Globular Cluster."
     )
-    args.add_argument("-m", "--model", dest="model", default="king", type=str,
-        choices=["king", "wilson", "limepy"],
+    args.add_argument("-m", "--model_name", dest="model_name", default="king",
+        type=str, choices=["king", "wilson", "limepy", "spes"],
         help="Physical model for the density structure of the Globular Cluster.",
     )
     args.add_argument("-Nw", "--walkers", dest="Nwalkers", default=32,
@@ -215,7 +221,7 @@ if __name__ == "__main__":
 
     logger.info("Running {}".format(__file__))
     logger.info("  gc_name: {}".format(args.gc_name))
-    logger.info("  model: {}".format(args.model))
+    logger.info("  model_name: {}".format(args.model_name))
     logger.info("  Nwalkers: {}".format(args.Nwalkers))
     logger.info("  Nsamples: {}".format(args.Nsamples))
     logger.info("  Nburn_in: {}".format(args.Nburn_in))
@@ -234,28 +240,29 @@ if __name__ == "__main__":
     # Run the MCMC fit
     from mw_gc_observation import MwGcObservation
     obs = MwGcObservation(logger, args.gc_name)
-    obs.fit_model_to_deBoer2019(model=args.model, mcmc=True,
+    obs.fit_model_to_deBoer2019(model_name=args.model_name, mcmc=True,
         Nwalkers=args.Nwalkers, Nsamples=args.Nsamples)
 
     # Remove more samples to burn in the walker
-    obs.fit[args.model]["flat_samples"] = get_flat_samples(
-        obs.fit[args.model]["sampler"], obs.fit[args.model]["tau"],
+    obs.fit[args.model_name]["flat_samples"] = get_flat_samples(
+        obs.fit[args.model_name]["sampler"], obs.fit[args.model_name]["tau"],
         discard=args.Nburn_in
     )
 
     pyplot.switch_backend("agg")
     pyplot.style.use("default")
-    inspect_chains(obs.fit[args.model]["sampler"], obs.fit[args.model]["fit_labels"]).savefig(
+    inspect_chains(obs.fit[args.model_name]["sampler"],
+        obs.fit[args.model_name]["fit_labels"]).savefig(
         "{0}mcmc_chains_{1}_{2}_{3}_{4}.png".format(obs.outdir, obs.gc_slug,
-            args.model, args.Nwalkers, args.Nsamples, args.Nburn_in)
+            args.model_name, args.Nwalkers, args.Nsamples, args.Nburn_in)
     )
-    plot_corner(obs.fit[args.model]["flat_samples"], obs.fit[args.model]["initial"],
-        obs.fit[args.model]["fit_labels"]).savefig(
-        "{0}mcmc_corner_{1}_{2}_{3}_{4}_{5}.png".format(obs.outdir, obs.gc_slug,
-            args.model, args.Nwalkers, args.Nsamples, args.Nburn_in)
+    plot_corner(obs.fit[args.model_name]["flat_samples"],
+        obs.fit[args.model_name]["initial"], obs.fit[args.model_name]["fit_labels"]
+    ).savefig("{0}mcmc_corner_{1}_{2}_{3}_{4}_{5}.png".format(obs.outdir, obs.gc_slug,
+        args.model_name, args.Nwalkers, args.Nsamples, args.Nburn_in)
     )
     pyplot.style.use("tlrh")
-    plot_results(obs, [args.model]).savefig(
+    plot_results(obs, model_names=[args.model_name]).savefig(
         "{0}mcmc_fit_{1}_{2}_{3}_{4}_{5}.png".format(obs.outdir, obs.gc_slug,
-            args.model, args.Nwalkers, args.Nsamples, args.Nburn_in)
+            args.model_name, args.Nwalkers, args.Nsamples, args.Nburn_in)
     )

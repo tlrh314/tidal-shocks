@@ -4,6 +4,7 @@ import glob
 import numpy
 import argparse
 import platform
+import matplotlib
 from matplotlib import pyplot
 pyplot.style.use("tlrh")
 if "freya" in platform.node(): pyplot.switch_backend("agg")
@@ -14,8 +15,44 @@ from amuse.io import read_set_from_file
 BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
 
 
-def analyse_isolation(sim, model, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
-    snap_base = "{}{}_isolation_*.hdf5".format(sim.outdir, sim.gc_name)
+def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=None,
+        softening=None, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
+
+    fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
+
+    if Tsnap is None:
+        suptitle = "{} at T={:<10.2f} Myr".format(obs.gc_name, Tsnap.value_in(units.Myr))
+    elif Tsnap == "ICs":
+        suptitle = "{} ICs".format(obs.gc_name)
+    else:
+        suptitle = "{}".format(obs.gc_name)
+
+    # Observation
+    obs.add_deBoer2019_to_fig(fig,
+        show_King=True if model_name == "king" else False,
+        show_Wilson=True if model_name == "wilson" else False,
+        show_limepy=True if model_name == "limepy" else False,
+        show_spes=True if model_name == "spes" else False,
+    )
+    fig.suptitle(suptitle, fontsize=22)
+
+    # Sampled Sigma(R) profile
+    obs.add_deBoer2019_sampled_to_ax(ax, amuse_sampled, limepy_model=limepy_model,
+        parm="Sigma", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
+
+    if softening is not None:
+        xlim = ax.get_xlim()
+        softening = parsec2arcmin(0.1, self.distance_kpc)
+        trans = matplotlib.transforms.blended_transform_factory(ax.transData, ax.transAxes)
+        ax.fill_between(numpy.arange(xlim[0], softening, 0.01), 0, 1,
+            facecolor="grey", edgecolor="grey", alpha=0.2, transform=trans)
+
+    ax.legend(fontsize=20)
+    return fig
+
+
+def analyse_isolation(obs, model, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
+    snap_base = "{}{}_isolation_*.hdf5".format(obs.outdir, obs.gc_name)
     snapshots = sorted(
         glob.glob(snap_base)
     )
@@ -35,30 +72,17 @@ def analyse_isolation(sim, model, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
         modelname = "King, loaded, T={0} Myr".format(Tsnap.value_in(units.Myr))
         # print_particleset_info(stars, converter, modelname)
 
-        # fig = scatter_particles_xyz(sim.king_amuse)
+        # fig = scatter_particles_xyz(obs.king_amuse)
         # pyplot.show(fig)
-
-        # Plot Sigma(R) vs R
-        fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
-        sim.add_deBoer2019_to_fig(fig, show_King=True)
-        fig.suptitle("{0} at T={1} Myr".format(sim.gc_name,
-            Tsnap.value_in(units.Myr)), fontsize=22)
-        # sim.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
-        #     parm="rho", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
-        sim.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
-            parm="Sigma", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
-        ax.legend(fontsize=20)
-        pyplot.savefig("{0}{1}_isolation_{2:04d}.png".format(sim.outdir, sim.gc_name, i))
-        pyplot.show(fig)
 
         # Mass
         fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
-        sim.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
+        obs.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
             parm="mc", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
         pyplot.show(fig)
 
 
-class IsolationTestSimulation(object):
+class IsolationTestobsulation(object):
     def __init__(self,
                  nstars=1000,
                  endtime=1000,
@@ -80,7 +104,7 @@ def new_argument_parser():
     args.add_argument("-gc", "--gc_name", dest="gc_name", default="NGC 104",
         type=str, help="Name of the Globular Cluster."
     )
-    args.add_argument("-m", "--model", dest="model", default="king", type=str,
+    args.add_argument("-m", "--model_name", dest="model_name", default="king", type=str,
         choices=["king", "wilson", "limepy"],
         help="Physical model for the density structure of the Globular Cluster.",
     )
@@ -89,10 +113,10 @@ def new_argument_parser():
     )
     args.add_argument("-c", "--code", dest="code", default="hermite",
         type=str, choices=["hermite", "bhtree", "octgrav", "phigrape", "ph4"],
-        help="Nbody integrator to use for the simulation.",
+        help="Nbody integrator to use for the obsulation.",
     )
     args.add_argument("-t", "--end-time", dest="endtime", default=1000.0,
-        type=float, help="Simulation end time. Use float, in Myr!",
+        type=float, help="obsulation end time. Use float, in Myr!",
     )
     args.add_argument("--nsnap", dest="nsnap", default=100, type=int,
         help="Number of snapshots to save",
@@ -121,7 +145,7 @@ if __name__ == "__main__":
 
     logger.info("Running {0}".format(__file__))
     logger.info("  gc_name: {0}".format(args.gc_name))
-    logger.info("  model: {0}".format(args.model))
+    logger.info("  model_name: {0}".format(args.model_name))
     logger.info("  Nstars: {0}".format(args.Nstars))
     logger.info("  code: {0}".format(args.code))
     logger.info("  endtime: {0} [Myr]".format(args.endtime))
@@ -134,33 +158,27 @@ if __name__ == "__main__":
         sys.path.insert(0, "{}/tidalshocks/src".format(BASEDIR))
     from mw_gc_observation import MwGcObservation
 
-    sim = StarClusterSimulation(logger, args.gc_name)
+    obs = MwGcObservation(logger, args.gc_name)
 
     # Sample initial conditions for King/Wilson/Limepy MLEs from deBoer+ 2019
-    if args.model == "king":
-        model, limepy_sampled, amuse_sampled, converter = \
-            sim.sample_deBoer2019_bestfit_king(Nstars=args.Nstars)
-    elif args.model == "wilson":
-        model, limepy_sampled, amuse_sampled, converter = \
-            sim.sample_deBoer2019_bestfit_wilson(Nstars=args.Nstars)
-    elif args.model == "limepy":
-        model, limepy_sampled, amuse_sampled, converter = \
-            sim.sample_deBoer2019_bestfit_limepy(Nstars=args.Nstars)
+    if args.model_name == "king":
+        limepy_model, limepy_sampled, amuse_sampled, converter = \
+            obs.sample_deBoer2019_bestfit_king(Nstars=args.Nstars)
+    elif args.model_name == "wilson":
+        limepy_model, limepy_sampled, amuse_sampled, converter = \
+            obs.sample_deBoer2019_bestfit_wilson(Nstars=args.Nstars)
+    elif args.model_name == "limepy":
+        limepy_model, limepy_sampled, amuse_sampled, converter = \
+            obs.sample_deBoer2019_bestfit_limepy(Nstars=args.Nstars)
 
     # Verify that the sampled profile matches the observed profile (as well as
     # the requested Limepy model, of course)
 
-    # Plot the initial conditions as a sanity check
-    # fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
-    # sim.add_deBoer2019_to_fig(fig, show_King=True)
-    # sim.add_deBoer2019_sampled_to_ax(ax, king_amuse_sampled, parm="Sigma",
-    #     model=king_model, rmin=1e-4, rmax=1e3, Nbins=int(numpy.sqrt(args.Nstars)))
-    # ax.legend(fontsize=20)
-    # fname = "{0}{1}_sampled_ICs.png".format(sim.outdir, sim.gc_name)
-    # pyplot.savefig(fname)
-    # pyplot.close(fig)
-    # logger.info("  Saved: {0}".format(fname))
+    fname = "{}{}_isolation_ICs.png".format(obs.outdir, obs.gc_slug)
+    plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=args.model_name,
+        Tsnap="ICs").savefig(fname)
+    logger.info("  Saved: {0}".format(fname))
 
-    # # Run the simulation
-    # gc_in_isolation(sim, king_amuse_sampled, king_converter, ts=ts, tsnap=tsnap,
+    # # Run the obsulation
+    # gc_in_isolation(obs, king_amuse_sampled, king_converter, ts=ts, tsnap=tsnap,
     #     softening=softening, number_of_workers=args.number_of_workers)

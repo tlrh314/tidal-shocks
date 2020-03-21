@@ -41,7 +41,9 @@ def limepy_wrapper(x, W0, M, rt, g, verbose=False):
 
 def spes_wrapper(x, W0, B, eta, M, rt, nrt, verbose=False):
     # Prevent infinite loop when spes has B or eta out of bounds
-    if (0.0 > B or B > 1.0) or (0.0 > eta or eta > 1.0): return numpy.ones(len(x))
+    if ( (0.0 > W0 or W0 > 14) or (0.0 > B or B > 1.0) or (0.0 > eta or eta > 1.0) or
+         (1e2 > M or M > 1e6) or (1.0 > rt or rt > 300) or (0.1 > nrt or nrt > 100) ):
+        return numpy.ones(len(x))
 
     if verbose:
         print("  Spes, W0={0:.3f}, B={1:.3f}, eta={2:.3f}, M={3:.3e}, rt={4:.3f}, nrt={5:.3f}".format(

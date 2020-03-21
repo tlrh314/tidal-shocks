@@ -23,5 +23,6 @@ gcs=(
 for gc in "${gcs[@]}"; do
     job="./emcee.sh ${gc}"
     echo "Submitting job: ${job}"
-    sbatch $job
+    exec $job
+    break
 done
