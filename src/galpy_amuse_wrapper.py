@@ -10,6 +10,7 @@ from matplotlib import pyplot
 from matplotlib import gridspec
 from amuse.units import units
 from amuse.units import nbody_system
+from amuse.units.quantities import ScalarQuantity
 from amuse.datamodel import Particles
 from amuse.datamodel import ParticlesWithUnitsConverted
 from amuse.ic.plummer import new_plummer_sphere
@@ -39,19 +40,24 @@ from utils import parsec2arcmin
 
 
 def print_stuff(p, w="  "):
-    print("{}com:       {}".format(w, p.center_of_mass().as_quantity_in(units.parsec)))
-    print("{}comvel:    {}".format(w, p.center_of_mass_velocity().as_quantity_in(units.km/units.s)))
+    com = p.center_of_mass().as_quantity_in(units.parsec)
+    comvel = p.center_of_mass_velocity().as_quantity_in(units.km/units.s)
     Mtot = p.total_mass().as_quantity_in(units.MSun)
-    print("{}Mtot:      {}".format(w, Mtot))
     Ekin = p.kinetic_energy().as_quantity_in(units.J)
-    print("{}Ekin:      {}".format(w, Ekin))
     Epot = p.potential_energy().as_quantity_in(units.J)
+    Ltot = p.total_angular_momentum().as_quantity_in(units.MSun*units.parsec**2/units.Myr)
+    ptot = p.total_momentum().as_quantity_in(units.MSun*units.parsec/units.Myr)
+
+    print("{}com:       {}".format(w, com))
+    print("{}comvel:    {}".format(w, comvel))
+    print("{}Mtot:      {}".format(w, Mtot))
+    print("{}Ekin:      {}".format(w, Ekin))
     print("{}Epot:      {}".format(w, Epot))
     print("{}Ekin/Epot: {}".format(w, Ekin/Epot))
-    Ltot = p.total_angular_momentum().as_quantity_in(units.MSun*units.parsec**2/units.Myr)
     print("{}Ltot:      {}".format(w, Ltot))
-    ptot = p.total_momentum().as_quantity_in(units.MSun*units.parsec/units.Myr)
     print("{}ptot:      {}".format(w, ptot))
+
+    return com, comvel, Mtot, Ekin, Epot, Ltot, ptot
 
 
 def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
@@ -155,7 +161,7 @@ def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=No
 
     fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
 
-    if Tsnap is None:
+    if type(Tsnap) == ScalarQuantity:
         suptitle = "{} at T={:<10.2f} Myr".format(obs.gc_name, Tsnap.value_in(units.Myr))
     elif Tsnap == "ICs":
         suptitle = "{} ICs".format(obs.gc_name)
@@ -189,7 +195,7 @@ def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=No
 class MwGcSimulation(object):
     def __init__(self, logger, obs, model_name, Nstars=1000, endtime=1000.0,
             Nsnapshots=100, code="fi", number_of_workers=4, softening=1.0, seed=-1,
-            isolation=True, do_something=lambda stars, time, i: stars):
+            isolation=True, do_something=lambda obs, sim, stars, time, i: stars):
 
         if seed >= 0:
             numpy.seed(seed)
@@ -215,7 +221,7 @@ class MwGcSimulation(object):
         print("Energy        : {}".format(energy0))
         print("Virial radius : {}".format(virial_radius))
 
-        self.evolve_model(do_something)
+        self.evolve_model(do_something, obs)
 
         time = self.bridge.model_time.as_quantity_in(units.Myr)
         sum_energy = self.bridge.kinetic_energy + self.bridge.potential_energy
@@ -251,7 +257,7 @@ class MwGcSimulation(object):
         ).savefig(fname)
         self.logger.info("\nSaved: {0}".format(fname))
 
-    def evolve_model(self, do_something):
+    def evolve_model(self, do_something, obs):
         try:
             for i, time in enumerate(self.delta_t * numpy.arange(1, self.Nsnapshots+1)):
                 self.bridge.evolve_model(time)
@@ -264,7 +270,7 @@ class MwGcSimulation(object):
                 self.channel_from_gravity_to_stars.copy()
                 print_stuff(self.amuse_sampled, w="    ")
 
-                self.amuse_sampled = do_something(
+                self.amuse_sampled = do_something(obs, self,
                     self.amuse_sampled, self.bridge.model_time, i
                 )
 
@@ -279,6 +285,7 @@ class MwGcSimulation(object):
 
     def create_cluster_code(self, code):
         self.cluster_code = getattr(self, "new_code_"+code)()
+        print("\nCode Parameters\n{}\n".format(self.cluster_code.parameters))
 
     def setup_bridge(self):
         # Setup channels between stars particle dataset and the cluster code
@@ -310,13 +317,13 @@ class MwGcSimulation(object):
         self.bridge.stop()
 
     def new_code_fi(self):
-        os.environ["OMP_NUM_THREADS"] = "4"
-        result = Fi(self.converter, number_of_workers=1, mode="openmp")
+        os.environ["OMP_NUM_THREADS"] = "16"
+        result = Fi(self.converter, number_of_workers=1)
         result.parameters.self_gravity_flag = True
         result.parameters.use_hydro_flag = False
         result.parameters.radiation_flag = False
         # result.parameters.periodic_box_size = 500 | units.parsec
-        # result.parameters.timestep = 0.125 * self.interaction_timestep
+        result.parameters.timestep = 0.125 | units.Myr
         result.particles.add_particles(self.amuse_sampled)
         result.commit_particles()
         return result
@@ -393,7 +400,7 @@ def integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
     print("Setting up cluster_code /w {} workers".format(number_of_workers))
     print("converter: {}".format(converter))
     # cluster_code = BHTree(converter, number_of_workers=number_of_workers)
-    os.environ["OMP_NUM_THREADS"] = "4"
+    os.environ["OMP_NUM_THREADS"] = "16"
     cluster_code = Fi(converter, number_of_workers=1, mode="openmp")
     cluster_code.parameters.epsilon_squared = (softening)**2
     cluster_code.parameters.opening_angle = opening_angle

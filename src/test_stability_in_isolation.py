@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import glob
 import numpy
@@ -15,45 +16,80 @@ from amuse.io import read_set_from_file
 BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
 
 
-def analyse_isolation(obs, sim, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
-    snap_base = "{}{}_isolation_*.hdf5".format(obs.outdir, obs.gc_name)
-    snapshots = sorted(
-        glob.glob(snap_base)
+def analyse_isolation(obs, model_name, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
+    from galpy_amuse_wrapper import print_stuff
+    from galpy_amuse_wrapper import plot_SigmaR_vs_R
+
+    # REMOVE
+    limepy_model, limepy_sampled, amuse_sampled, converter = \
+        obs.sample_deBoer2019_bestfit_king(Nstars=1000)
+    # END REMOVE
+
+    snap_base = "{}{}_{}_isolation_*.h5".format(obs.outdir, obs.gc_slug, model_name)
+    snapshots = sorted(glob.glob(snap_base), key=lambda s:
+        [ int(c) for c in re.split('(\d+)', s) if c.isdigit()]
     )
-    print("Found {0} snapshots".format(len(snapshots)))
+    Nsnaps = len(snapshots)
+    print("Found {0} snapshots".format(Nsnaps))
 
+    time = numpy.zeros(Nsnaps) | units.Myr
+    com = numpy.zeros(Nsnaps) | units.parsec
+    comvel = numpy.zeros(Nsnaps) | units.km/units.s
+    Mtot = numpy.zeros(Nsnaps) | units.MSun
+    Ekin = numpy.zeros(Nsnaps) | units.J
+    Epot = numpy.zeros(Nsnaps) | units.J
+    Ltot = numpy.zeros(Nsnaps) | units.MSun*units.parsec**2/units.Myr
+    ptot = numpy.zeros(Nsnaps) | units.MSun*units.parsec/units.Myr
     for i, fname in enumerate(snapshots):
+        # if i > 2: break
         print("  Loading snapshot: {0}".format(fname))
-        Tsnap = fname.split("T=")[-1].split("_i")[0] | units.Myr
         stars = read_set_from_file(fname, "hdf5")
-        print(stars.total_mass().as_quantity_in(units.MSun))
-        print(stars.center_of_mass().as_quantity_in(units.parsec))
-        # Tsnap = stars.get_timestamp()  # if stars.savepoint(time) would have been used
-        # However, ParticlesWithUnitsConverted does not have savepoint whereas
-        # Particles does...
-        print("  This snapshot was saved at T={0}".format(Tsnap.as_quantity_in(units.Myr)))
+        time[i] = stars.get_timestamp().as_quantity_in(units.Myr)
+        print("  This snapshot was saved at T={0}".format(time[i]))
+        # (com[i], comvel[i], Mtot[i], Ekin[i], Epot[i], Ltot[i], ptot[i]) = \
+        #     print_stuff(stars, w="    ")
+        com_i, comvel_i, Mtot_i, Ekin_i, Epot_i, Ltot_i, ptot_i = print_stuff(stars, w="    ")
+        # com[i], comvel[i], Mtot[i], Ekin[i], Epot[i], Ltot[i], ptot[i] = \
+        #     com_i, comvel_i, Mtot_i, Ekin_i, Epot_i, Ltot_i, ptot_i
+        Ekin[i] = Ekin_i
+        Epot[i] = Epot_i
         print("")
-        modelname = "King, loaded, T={0} Myr".format(Tsnap.value_in(units.Myr))
-        # print_particleset_info(stars, converter, modelname)
 
-        # fig = scatter_particles_xyz(obs.king_amuse)
-        # pyplot.show(fig)
+        isolation = True
+        softening=0.1
+        fname = "{}{}_{}_{}_{}_{}_{:04d}.png".format(obs.outdir, obs.gc_slug,
+            model_name, "isolation" if isolation else "MWPotential2014", len(stars),
+            softening, i)
+        plot_SigmaR_vs_R(obs, limepy_model, stars,
+            model_name=model_name, Tsnap=time[i], softening=softening,
+        ).savefig(fname); pyplot.close(pyplot.gcf())
 
-        # Mass
-        fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
-        obs.add_deBoer2019_sampled_to_ax(ax, stars, model=model,
-            parm="mc", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
-        pyplot.show(fig)
+        print("\nSaved: {0}".format(fname))
 
 
-def dump_snapshot(stars, time, i, model_name):
-    fname = "{}{}_{}_isolation_{:04d}.h5".format(obs.outdir, obs.gc_slug, model_name, i)
+    # Check energy
+    fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
+    ax.plot(time.value_in(units.Myr), Ekin.value_in(units.J), label="Ekin")
+    ax.plot(time.value_in(units.Myr), -Epot.value_in(units.J), label="-Epot")
+    ax.plot(time.value_in(units.Myr), (Ekin+Epot).value_in(units.J), label="Ekin+Etot")
+    ax.set_xlabel("Time [ Myr ]")
+    ax.set_ylabel("Energy [ J ]")
+    ax.legend(loc="best", fontsize=16, frameon=False)
+    pyplot.show(fig)
+
+
+
+def dump_snapshot(obs, sim, stars, time, i):
+    fname = "{}{}_{}_isolation_{}_{}_{:04d}.h5".format(obs.outdir, obs.gc_slug,
+        sim.model_name, sim.Nstars, sim.softening.value_in(units.parsec), i
+    )
     print("\n    Dumping snapshot: {0}".format(fname))
     if os.path.exists(fname) and os.path.isfile(fname):
         print("      WARNING: file exists, overwriting it!")
 
     # append_to_file --> existing file is removed and overwritten
-    write_set_to_file(stars, fname, "hdf5", append_to_file=False)
+    write_set_to_file(stars.copy_to_new_particles().savepoint(time),
+        fname, "hdf5", append_to_file=False)
     print("    done")
 
     return stars
@@ -127,6 +163,5 @@ if __name__ == "__main__":
     sim = MwGcSimulation(logger, obs, args.model_name, Nstars=args.Nstars,
         endtime=args.endtime, Nsnapshots=args.Nsnapshots, code=args.code,
         number_of_workers=args.number_of_workers, softening=args.softening,
-        isolation=True, seed=args.seed, do_something=lambda stars, time, i:
-            dump_snapshot(stars, time, i, model_name=args.model_name)
+        isolation=True, seed=args.seed, do_something=dump_snapshot
     )
