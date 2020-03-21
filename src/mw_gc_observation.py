@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import pickle
 import platform
 
 import numpy
@@ -52,11 +53,17 @@ from data.parse_deBoer_2019 import parse_deBoer_2019_stitched_profiles
 
 
 class MwGcObservation(object):
-    def __init__(self, logger, gc_name):
+    def __init__(self, logger, gc_name, force_parse=False):
         self.logger = logger
         self.gc_name = gc_name
         self._set_outdir()
-        self._set_observations()
+        self._set_observations(force_parse=force_parse)
+        self.distance_kpc = self.h96_gc.dist_from_sun
+        self.rJ_pc = self.b18["r_J"]
+        self.rJ = parsec2arcmin(self.rJ_pc, self.distance_kpc)
+
+        # Placeholder to store the fit data
+        self.fit = {"king": {}, "wilson": {}, "limepy": {}, "spes": {}}
 
     def _set_outdir(self):
         self.gc_slug = self.gc_name.replace(" ", "").lower()
@@ -67,24 +74,43 @@ class MwGcObservation(object):
         else:
             self.logger.debug("  Using outdir: {0}\n".format(self.outdir))
 
-    def _set_observations(self):
-        # Various parameters
-        self._set_harris1996()
-        self.distance_kpc = self.h96_gc.dist_from_sun
+    def _set_observations(self, force_parse=False):
+        fname = "{}_obs_dump_{}.p".format(self.outdir, self.gc_slug)
+        print(fname)
 
-        # Jacobi radii
-        self._set_balbinot2018()
-        self.rJ_pc = self.b18["r_J"]
-        self.rJ = parsec2arcmin(self.rJ_pc, self.distance_kpc)
+        # Load dump of all observations if it exists, else parse underlying data
+        if os.path.exists(fname) and os.path.isfile(fname) and not force_parse:
+            p = pickle.load(open(fname, "rb"))
+            self.h96_gc = p["h96_gc"]
+            self.b18 = p["b18"]
+            self.h19_orbit = p["h19_orbit"]
+            self.h19_combined = p["h19_combined"]
+            self.h19_rv = p["h19_rv"]
+            self.deB19_fit = p["deB19_fit"]
+            self.deB19_stitched = p["deB19_stitched"]
+        else:
+            # Various parameters
+            self._set_harris1996()
 
-        # Projected star count profiles
-        self._set_deBoer2019()
+            # Jacobi radii
+            self._set_balbinot2018()
 
-        # Orbital parameters for 154 MW GCs, and velocity dispersion profiles
-        self._set_hilker2019()
+            # Projected star count profiles
+            self._set_deBoer2019()
 
-        # Placeholder to store the fit data
-        self.fit = {"king": {}, "wilson": {}, "limepy": {}, "spes": {}}
+            # Orbital parameters for 154 MW GCs, and velocity dispersion profiles
+            self._set_hilker2019()
+
+            pickle.dump({
+                    "h96_gc": self.h96_gc,
+                    "b18": self.b18,
+                    "h19_orbit": self.h19_orbit,
+                    "h19_combined": self.h19_combined,
+                    "h19_rv": self.h19_rv,
+                    "deB19_fit": self.deB19_fit,
+                    "deB19_stitched": self.deB19_stitched,
+                }, open(fname, "wb")
+            )
 
     def _set_harris1996(self):
         self.h96_gc = parse_harris1996ed2010(self.logger)[self.gc_name]
