@@ -56,6 +56,7 @@ class MwGcObservation(object):
     def __init__(self, logger, gc_name, force_parse=False):
         self.logger = logger
         self.gc_name = gc_name
+        self.gc_slug = self.gc_name.replace(" ", "").lower()
         self._set_outdir()
         self._set_observations(force_parse=force_parse)
         self.distance_kpc = self.h96_gc.dist_from_sun
@@ -66,7 +67,6 @@ class MwGcObservation(object):
         self.fit = {"king": {}, "wilson": {}, "limepy": {}, "spes": {}}
 
     def _set_outdir(self):
-        self.gc_slug = self.gc_name.replace(" ", "").lower()
         self.outdir = "{}/tidalshocks/out/{}/".format(BASEDIR, self.gc_slug)
         if not os.path.exists(self.outdir) or not os.path.isdir(self.outdir):
             os.mkdir(self.outdir)
@@ -75,7 +75,7 @@ class MwGcObservation(object):
             self.logger.debug("  Using outdir: {0}\n".format(self.outdir))
 
     def _set_observations(self, force_parse=False):
-        fname = "{}_obs_dump_{}.p".format(self.outdir, self.gc_slug)
+        fname = "{}{}_obs_dump.p".format(self.outdir, self.gc_slug)
         print(fname)
 
         # Load dump of all observations if it exists, else parse underlying data
