@@ -4,54 +4,18 @@ import glob
 import numpy
 import argparse
 import platform
-import matplotlib
 from matplotlib import pyplot
 pyplot.style.use("tlrh")
 if "freya" in platform.node(): pyplot.switch_backend("agg")
 from amuse.units import units
+from amuse.io import write_set_to_file
 from amuse.io import read_set_from_file
 
 
 BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
 
 
-def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=None,
-        softening=None, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
-
-    fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
-
-    if Tsnap is None:
-        suptitle = "{} at T={:<10.2f} Myr".format(obs.gc_name, Tsnap.value_in(units.Myr))
-    elif Tsnap == "ICs":
-        suptitle = "{} ICs".format(obs.gc_name)
-    else:
-        suptitle = "{}".format(obs.gc_name)
-
-    # Observation
-    obs.add_deBoer2019_to_fig(fig,
-        show_King=True if model_name == "king" else False,
-        show_Wilson=True if model_name == "wilson" else False,
-        show_limepy=True if model_name == "limepy" else False,
-        show_spes=True if model_name == "spes" else False,
-    )
-    fig.suptitle(suptitle, fontsize=22)
-
-    # Sampled Sigma(R) profile
-    obs.add_deBoer2019_sampled_to_ax(ax, amuse_sampled, limepy_model=limepy_model,
-        parm="Sigma", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
-
-    if softening is not None:
-        xlim = ax.get_xlim()
-        softening = parsec2arcmin(0.1, self.distance_kpc)
-        trans = matplotlib.transforms.blended_transform_factory(ax.transData, ax.transAxes)
-        ax.fill_between(numpy.arange(xlim[0], softening, 0.01), 0, 1,
-            facecolor="grey", edgecolor="grey", alpha=0.2, transform=trans)
-
-    ax.legend(fontsize=20)
-    return fig
-
-
-def analyse_isolation(obs, model, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
+def analyse_isolation(obs, sim, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
     snap_base = "{}{}_isolation_*.hdf5".format(obs.outdir, obs.gc_name)
     snapshots = sorted(
         glob.glob(snap_base)
@@ -82,18 +46,17 @@ def analyse_isolation(obs, model, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
         pyplot.show(fig)
 
 
-class IsolationTestobsulation(object):
-    def __init__(self,
-                 nstars=1000,
-                 endtime=1000,
-                 star_code='hermite',
-                 softening=0.0,
-                 seed=-1,
-                 ntimesteps=10,
-                 **ignored_options
-                 ):
-        if seed >= 0:
-            numpy.random.seed(seed)
+def dump_snapshot(stars, time, i, model_name):
+    fname = "{}{}_{}_isolation_{:04d}.h5".format(obs.outdir, obs.gc_slug, model_name, i)
+    print("\n    Dumping snapshot: {0}".format(fname))
+    if os.path.exists(fname) and os.path.isfile(fname):
+        print("      WARNING: file exists, overwriting it!")
+
+    # append_to_file --> existing file is removed and overwritten
+    write_set_to_file(stars, fname, "hdf5", append_to_file=False)
+    print("    done")
+
+    return stars
 
 
 def new_argument_parser():
@@ -111,24 +74,25 @@ def new_argument_parser():
     args.add_argument("-N", "--Nstars", dest="Nstars", default=1000, type=int,
         help="Number of particles.",
     )
-    args.add_argument("-c", "--code", dest="code", default="hermite",
-        type=str, choices=["hermite", "bhtree", "octgrav", "phigrape", "ph4"],
-        help="Nbody integrator to use for the obsulation.",
-    )
     args.add_argument("-t", "--end-time", dest="endtime", default=1000.0,
         type=float, help="obsulation end time. Use float, in Myr!",
     )
-    args.add_argument("--nsnap", dest="nsnap", default=100, type=int,
+    args.add_argument("--Nsnap", dest="Nsnapshots", default=100, type=int,
         help="Number of snapshots to save",
+    )
+    args.add_argument("-c", "--code", dest="code", default="fi",
+        type=str, choices=["fi", "ph4", "huayno", "bhtree", "gadget2",
+            "mercury", "hermite", "phigrape"],
+        help="Nbody integrator to use for the obsulation.",
+    )
+    args.add_argument("-np", "--number_of_workers", dest="number_of_workers",
+        default=4, type=int, help="Number of workers",
     )
     args.add_argument("-s", "--softening", dest="softening", default=0.1,
         type=float, help="Force softening. Use float, in pc!",
     )
-    args.add_argument("--seed", dest="seed", default=0, type=int,
+    args.add_argument("--seed", dest="seed", default=-1, type=int,
         help="Random number seed (-1, no seed).",
-    )
-    args.add_argument("-np", "--number_of_workers", dest="number_of_workers",
-        default=4, type=int, help="Number of workers",
     )
 
     return args
@@ -147,38 +111,22 @@ if __name__ == "__main__":
     logger.info("  gc_name: {0}".format(args.gc_name))
     logger.info("  model_name: {0}".format(args.model_name))
     logger.info("  Nstars: {0}".format(args.Nstars))
-    logger.info("  code: {0}".format(args.code))
     logger.info("  endtime: {0} [Myr]".format(args.endtime))
-    logger.info("  nsnap: {0}".format(args.nsnap))
+    logger.info("  Nsnapshots: {0}".format(args.Nsnapshots))
+    logger.info("  code: {0}".format(args.code))
+    logger.info("  number_of_workers: {0}".format(args.number_of_workers))
     logger.info("  softening: {0} [parsec]".format(args.softening))
-    logger.info("  seed: {0}".format(args.seed))
-    logger.info("  number_of_workers: {0}\n".format(args.number_of_workers))
+    logger.info("  seed: {0}\n".format(args.seed))
 
     if "/tidalshocks" not in sys.path:
         sys.path.insert(0, "{}/tidalshocks/src".format(BASEDIR))
     from mw_gc_observation import MwGcObservation
+    from galpy_amuse_wrapper import MwGcSimulation
 
     obs = MwGcObservation(logger, args.gc_name)
-
-    # Sample initial conditions for King/Wilson/Limepy MLEs from deBoer+ 2019
-    if args.model_name == "king":
-        limepy_model, limepy_sampled, amuse_sampled, converter = \
-            obs.sample_deBoer2019_bestfit_king(Nstars=args.Nstars)
-    elif args.model_name == "wilson":
-        limepy_model, limepy_sampled, amuse_sampled, converter = \
-            obs.sample_deBoer2019_bestfit_wilson(Nstars=args.Nstars)
-    elif args.model_name == "limepy":
-        limepy_model, limepy_sampled, amuse_sampled, converter = \
-            obs.sample_deBoer2019_bestfit_limepy(Nstars=args.Nstars)
-
-    # Verify that the sampled profile matches the observed profile (as well as
-    # the requested Limepy model, of course)
-
-    fname = "{}{}_isolation_ICs.png".format(obs.outdir, obs.gc_slug)
-    plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=args.model_name,
-        Tsnap="ICs").savefig(fname)
-    logger.info("  Saved: {0}".format(fname))
-
-    # # Run the obsulation
-    # gc_in_isolation(obs, king_amuse_sampled, king_converter, ts=ts, tsnap=tsnap,
-    #     softening=softening, number_of_workers=args.number_of_workers)
+    sim = MwGcSimulation(logger, obs, args.model_name, Nstars=args.Nstars,
+        endtime=args.endtime, Nsnapshots=args.Nsnapshots, code=args.code,
+        number_of_workers=args.number_of_workers, softening=args.softening,
+        isolation=True, seed=args.seed, do_something=lambda stars, time, i:
+            dump_snapshot(stars, time, i, model_name=args.model_name)
+    )

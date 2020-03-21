@@ -4,19 +4,23 @@ import time
 import numpy
 import platform
 import argparse
+import matplotlib
 import astropy.units as u
 from matplotlib import pyplot
 from matplotlib import gridspec
 from amuse.units import units
 from amuse.units import nbody_system
-from amuse.io import write_set_to_file
-from amuse.io import read_set_from_file
 from amuse.datamodel import Particles
 from amuse.datamodel import ParticlesWithUnitsConverted
 from amuse.ic.plummer import new_plummer_sphere
 from amuse.community.fi.interface import Fi
+from amuse.community.ph4.interface import ph4
+from amuse.community.huayno.interface import Huayno
 from amuse.community.bhtree.interface import BHTree
 from amuse.community.gadget2.interface import Gadget2
+from amuse.community.mercury.interface import Mercury
+from amuse.community.hermite.interface import Hermite
+from amuse.community.phigrape.interface import PhiGRAPE
 from amuse.couple import bridge
 from galpy.orbit import Orbit
 from galpy.potential import to_amuse
@@ -27,6 +31,27 @@ BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
 if "/limepy" not in sys.path:
     sys.path.insert(0, "{}/limepy".format(BASEDIR))
 import limepy   # using tlrh314/limepy fork
+
+
+if "/supaharris" not in sys.path:
+    sys.path.insert(0, "{}/supaharris".format(BASEDIR))
+from utils import parsec2arcmin
+
+
+def print_stuff(p, w="  "):
+    print("{}com:       {}".format(w, p.center_of_mass().as_quantity_in(units.parsec)))
+    print("{}comvel:    {}".format(w, p.center_of_mass_velocity().as_quantity_in(units.km/units.s)))
+    Mtot = p.total_mass().as_quantity_in(units.MSun)
+    print("{}Mtot:      {}".format(w, Mtot))
+    Ekin = p.kinetic_energy().as_quantity_in(units.J)
+    print("{}Ekin:      {}".format(w, Ekin))
+    Epot = p.potential_energy().as_quantity_in(units.J)
+    print("{}Epot:      {}".format(w, Epot))
+    print("{}Ekin/Epot: {}".format(w, Ekin/Epot))
+    Ltot = p.total_angular_momentum().as_quantity_in(units.MSun*units.parsec**2/units.Myr)
+    print("{}Ltot:      {}".format(w, Ltot))
+    ptot = p.total_momentum().as_quantity_in(units.MSun*units.parsec/units.Myr)
+    print("{}ptot:      {}".format(w, ptot))
 
 
 def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
@@ -99,19 +124,7 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     amuse.vz += Vinit[2]
 
     print("\nlimepy_to_amuse, post-converter business")
-    print("  com:       {}".format(amuse.center_of_mass().as_quantity_in(units.parsec)))
-    print("  comvel:    {}".format(amuse.center_of_mass_velocity().as_quantity_in(units.km/units.s)))
-    Mtot = amuse.total_mass().as_quantity_in(units.MSun)
-    print("  Mtot:      {}".format(Mtot))
-    Ekin = amuse.kinetic_energy().as_quantity_in(units.J)
-    print("  Ekin:      {}".format(Ekin))
-    Epot = amuse.potential_energy().as_quantity_in(units.J)
-    print("  Epot:      {}".format(Epot))
-    print("  Ekin/Epot: {}".format(Ekin/Epot))
-    Ltot = amuse.total_angular_momentum().as_quantity_in(units.MSun*units.parsec**2/units.Myr)
-    print("  Ltot:      {}".format(Ltot))
-    ptot = amuse.total_momentum().as_quantity_in(units.MSun*units.parsec/units.Myr)
-    print("  ptot:      {}".format(ptot))
+    print_stuff(amuse)
 
     # Now let limepy scale the model because that's what we'll return
     # and we kinda like the model to be in physical units. Also project :-).
@@ -135,6 +148,238 @@ def setup_cluster(N=1000, Mcluster=1000.0 | units.MSun, Rcluster=10.0 | units.pa
     stars.vz += Vinit[2]
 
     return stars, converter
+
+
+def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=None,
+        softening=None, rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
+
+    fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
+
+    if Tsnap is None:
+        suptitle = "{} at T={:<10.2f} Myr".format(obs.gc_name, Tsnap.value_in(units.Myr))
+    elif Tsnap == "ICs":
+        suptitle = "{} ICs".format(obs.gc_name)
+    else:
+        suptitle = "{}".format(obs.gc_name)
+
+    # Observation
+    obs.add_deBoer2019_to_fig(fig,
+        show_King=True if model_name == "king" else False,
+        show_Wilson=True if model_name == "wilson" else False,
+        show_limepy=True if model_name == "limepy" else False,
+        show_spes=True if model_name == "spes" else False,
+    )
+    fig.suptitle(suptitle, fontsize=22)
+
+    # Sampled Sigma(R) profile
+    obs.add_deBoer2019_sampled_to_ax(ax, amuse_sampled, limepy_model=limepy_model,
+        parm="Sigma", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
+
+    if softening is not None:
+        xlim = ax.get_xlim()
+        softening = parsec2arcmin(softening, obs.distance_kpc)
+        trans = matplotlib.transforms.blended_transform_factory(ax.transData, ax.transAxes)
+        ax.fill_between(numpy.arange(xlim[0], softening, 0.01), 0, 1,
+            facecolor="grey", edgecolor="grey", alpha=0.2, transform=trans)
+
+    ax.legend(fontsize=20)
+    return fig
+
+
+class MwGcSimulation(object):
+    def __init__(self, logger, obs, model_name, Nstars=1000, endtime=1000.0,
+            Nsnapshots=100, code="fi", number_of_workers=4, softening=1.0, seed=-1,
+            isolation=True, do_something=lambda stars, time, i: stars):
+
+        if seed >= 0:
+            numpy.seed(seed)
+
+        self.logger = logger
+        self.Nstars = Nstars
+        self.endtime = endtime | units.Myr
+        self.Nsnapshots = Nsnapshots
+        self.delta_t = self.endtime / self.Nsnapshots
+        self.softening = softening | units.parsec
+        self.isolation = isolation
+
+        self.model_name = model_name
+        self.new_particles_cluster(obs)
+        self.create_cluster_code(code)
+        self.setup_bridge()
+
+        time = 0 | units.Myr  # kinda useless
+        sum_energy = self.bridge.kinetic_energy + self.bridge.potential_energy
+        energy0 = sum_energy.as_quantity_in(units.J)
+        virial_radius = self.bridge.particles.virial_radius().as_quantity_in(units.parsec)
+        print("\nTime          : {}".format(time))
+        print("Energy        : {}".format(energy0))
+        print("Virial radius : {}".format(virial_radius))
+
+        self.evolve_model(do_something)
+
+        time = self.bridge.model_time.as_quantity_in(units.Myr)
+        sum_energy = self.bridge.kinetic_energy + self.bridge.potential_energy
+        energy = sum_energy.as_quantity_in(units.J)
+        virial_radius = self.bridge.particles.virial_radius().as_quantity_in(units.parsec)
+
+        print("\nTime          : {}".format(time))
+        print("Energy        : {}".format(energy))
+        print("Delta E       : {}".format((energy-energy0)/energy0))
+        print("Virial radius : {}".format(virial_radius))
+
+        self.stop()
+
+    def new_particles_cluster(self, obs):
+        # Sample initial conditions for King/Wilson/Limepy MLEs from deBoer+ 2019
+        if self.model_name == "king":
+            self.limepy_model, limepy_sampled, self.amuse_sampled, self.converter = \
+                obs.sample_deBoer2019_bestfit_king(Nstars=self.Nstars)
+        elif self.model_name == "wilson":
+            self.limepy_model, limepy_sampled, self.amuse_sampled, self.converter = \
+                obs.sample_deBoer2019_bestfit_wilson(Nstars=self.Nstars)
+        elif self.model_name == "limepy":
+            self.limepy_model, limepy_sampled, self.amuse_sampled, self.converter = \
+                obs.sample_deBoer2019_bestfit_limepy(Nstars=self.Nstars)
+
+        # Verify that the sampled profile matches the observed profile (as well as
+        # the requested Limepy model, of course)
+        fname = "{}{}_{}_ICs.png".format(obs.outdir, obs.gc_slug,
+            "isolation" if self.isolation else "MWPotential2014")
+        plot_SigmaR_vs_R(obs, self.limepy_model, self.amuse_sampled,
+            model_name=self.model_name, Tsnap="ICs", softening=self.softening.value_in(
+                units.parsec)
+        ).savefig(fname)
+        self.logger.info("\nSaved: {0}".format(fname))
+
+    def evolve_model(self, do_something):
+        try:
+            for i, time in enumerate(self.delta_t * numpy.arange(1, self.Nsnapshots+1)):
+                self.bridge.evolve_model(time)
+                print("\nTime step {}/{} --> time: {:.3f} Myr".format(i,
+                    self.Nsnapshots, self.bridge.model_time.value_in(units.Myr)
+                ))
+
+                # Copy stars from gravity to output or analyze the simulation
+                print("  channel_from_gravity_to_stars.copy()")
+                self.channel_from_gravity_to_stars.copy()
+                print_stuff(self.amuse_sampled, w="    ")
+
+                self.amuse_sampled = do_something(
+                    self.amuse_sampled, self.bridge.model_time, i
+                )
+
+                # If you edited the stars particle set, for example to remove stars from the
+                # array because they have been kicked far from the cluster, you need to
+                # copy the array back to gravity:
+                print("  channel_from_stars_to_gravity.copy()")
+                self.channel_from_stars_to_gravity.copy()
+        except Exception as e:
+            self.bridge.stop()
+            raise
+
+    def create_cluster_code(self, code):
+        self.cluster_code = getattr(self, "new_code_"+code)()
+
+    def setup_bridge(self):
+        # Setup channels between stars particle dataset and the cluster code
+        print("\nSetting up channel from stars to gravity and vice versa")
+        self.channel_from_stars_to_gravity = self.amuse_sampled.new_channel_to(
+            self.cluster_code.particles, attributes =["mass", "x", "y", "z", "vx", "vy", "vz"])
+        self.channel_from_gravity_to_stars = self.cluster_code.particles.new_channel_to(
+            self.amuse_sampled, attributes =["mass", "x", "y", "z", "vx", "vy", "vz"])
+        print("Done setting up channels")
+
+        # Setup gravity bridge
+        print("Setting up bridge")
+        self.bridge = bridge.Bridge(use_threading=False)
+        if self.isolation:
+            # As a stability check, we first simulate the star cluster in isolation
+            self.bridge.add_system(self.cluster_code, )
+        else:
+            # Convert galpy MWPotential2014 to AMUSE representation (Webb+ 2020)
+            potential = to_amuse(MWPotential2014)
+            # Stars in gravity depend on gravity from external potential MWPotential2014
+            self.bridge.add_system(self.cluster_code, (potential, ))
+            # External potential potential still needs to be added to system so it evolves with time
+            self.bridge.add_system(potential, )
+        # Set how often to update external potential
+        self.bridge.timestep = self.cluster_code.parameters.timestep / 2.0
+        print("Done setting up bridge")
+
+    def stop(self):
+        self.bridge.stop()
+
+    def new_code_fi(self):
+        os.environ["OMP_NUM_THREADS"] = "4"
+        result = Fi(self.converter, number_of_workers=1, mode="openmp")
+        result.parameters.self_gravity_flag = True
+        result.parameters.use_hydro_flag = False
+        result.parameters.radiation_flag = False
+        # result.parameters.periodic_box_size = 500 | units.parsec
+        # result.parameters.timestep = 0.125 * self.interaction_timestep
+        result.particles.add_particles(self.amuse_sampled)
+        result.commit_particles()
+        return result
+
+    def new_code_ph4(self):
+        sys.exit(-1)
+        result = ph4(mode="gpu")
+        result.parameters.epsilon_squared = self.softening**2
+        result.particles.add_particles(self.amuse_sampled)
+        result.commit_particles()
+        return result
+
+    def new_code_huayno(self):
+        sys.exit(-1)
+        result = Huayno()
+        result.parameters.epsilon_squared = self.softening**2
+        result.particles.add_particles(self.amuse_sampled)
+        result.commit_particles()
+        return result
+
+    def new_code_bhtree(self):
+        sys.exit(-1)
+        result = BHTree()
+        result.parameters.epsilon_squared = self.softening**2
+        # result.parameters.timestep = 0.125 * self.interaction_timestep
+        result.particles.add_particles(self.amuse_sampled)
+        result.commit_particles()
+        return result
+
+    def new_code_gadget2(self):
+        sys.exit(-1)
+        result = Gadget2()
+        result.parameters.epsilon_squared = self.softening**2
+        # result.parameters.timestep = 0.125 * self.interaction_timestep
+        result.particles.add_particles(self.amuse_sampled)
+        result.commit_particles()
+        return result
+
+    def new_code_mercury(self):
+        sys.exit(-1)
+        result = Mercury()
+        result.parameters.epsilon_squared = self.softening**2
+        # result.parameters.timestep = 0.125 * self.interaction_timestep
+        result.particles.add_particles(self.amuse_sampled)
+        result.commit_particles()
+        return result
+
+    def new_code_hermite(self):
+        sys.exit(-1)
+        result = Hermite()
+        result.parameters.epsilon_squared = self.softening**2
+        result.particles.add_particles(self.amuse_sampled)
+        result.commit_particles()
+        return result
+
+    def new_code_phigrape(self):
+        sys.exit(-1)
+        result = PhiGRAPE(mode="gpu")
+        result.parameters.initialize_gpu_once = 1
+        result.parameters.epsilon_squared = self.softening**2
+        result.particles.add_particles(self.amuse_sampled)
+        result.commit_particles()
+        return result
 
 
 def integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
@@ -396,39 +641,6 @@ def compare_galpy_and_amuse(logger, h19_o, h19_combined, N=1,
     logger.info("-"*101)
 
     return o
-
-
-def gc_in_isolation(obs, ICs, converter, ts=numpy.linspace(0.0, 1.0, 1000) * u.Gyr,
-        tsnap=0.1|units.Myr, softening=0.1|units.parsec, number_of_workers=1):
-    """ Integrate the GC without external potential in AMUSE /w Gadget2 """
-
-    tstart, tend, Nsteps, dt = convert_galpy_to_amuse_times(ts)
-    logger.info("  Galpy T={0:.1f} to T={1:.1f} in N={2} steps".format(ts[0], ts[-1], len(ts)))
-    logger.info("  AMUSE T={0:.1f} Gyr to T={1:.1f} Gyr in N={2} steps, dt={3} Myr\n".format(
-        tstart.value_in(units.Gyr), tend.value_in(units.Gyr), Nsteps, dt.value_in(units.Myr)))
-
-    def dump_snapshot(stars, time, i):
-        fname = "{}{}_isolation_T={:010.2f}_i={:04d}.hdf5".format(obs.outdir, obs.gc_name,
-            time.value_in(units.Myr), i)
-        print("Dumping snapshot: {0}".format(fname))
-        if os.path.exists(fname) and os.path.isfile(fname):
-            print("WARNING: file exists, overwriting it!")
-
-        modelname = "King, T={0:.2f} Myr".format(time.value_in(units.Myr))
-        # append_to_file --> existing file is removed and overwritten
-        write_set_to_file(stars, fname, "hdf5", append_to_file=False)
-        print("Done")
-
-        return stars
-
-    start = time.time()
-    integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
-        ICs, converter, tstart=tstart, tend=tend, dt=dt,
-        do_something=dump_snapshot, number_of_workers=number_of_workers,
-        softening=softening, run_in_isolation=True,
-    )
-    runtime = time.time() - start
-    logger.info("Runtime AMUSE integration: {:.2f} seconds".format(runtime))
 
 
 def new_argument_parser():
