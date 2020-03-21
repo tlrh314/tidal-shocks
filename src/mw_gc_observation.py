@@ -76,7 +76,6 @@ class MwGcObservation(object):
 
     def _set_observations(self, force_parse=False):
         fname = "{}{}_obs_dump.p".format(self.outdir, self.gc_slug)
-        print(fname)
 
         # Load dump of all observations if it exists, else parse underlying data
         if os.path.exists(fname) and os.path.isfile(fname) and not force_parse:
@@ -88,6 +87,8 @@ class MwGcObservation(object):
             self.h19_rv = p["h19_rv"]
             self.deB19_fit = p["deB19_fit"]
             self.deB19_stitched = p["deB19_stitched"]
+            if self.h19_orbit is None:
+                self.logger.error("ERROR: {0} not in H19 orbits".format(self.gc_name))
         else:
             # Various parameters
             self._set_harris1996()
@@ -122,7 +123,12 @@ class MwGcObservation(object):
 
     def _set_hilker2019(self):
         h19_orbits = parse_hilker_2019_orbits(self.logger)
-        imatch, = numpy.where(h19_orbits["Cluster"] == self.gc_name)[0]
+        try:
+            imatch, = numpy.where(h19_orbits["Cluster"] == self.gc_name)[0]
+        except ValueError:
+            self.logger.error("ERROR: {0} not in H19 orbits".format(self.gc_name))
+            self.h19_orbit, self.h19_combined, self.h19_rv = None, None, None
+            return
         self.h19_orbit = h19_orbits[imatch]
 
         h19_combined = parse_hilker_2019_combined(self.logger)
