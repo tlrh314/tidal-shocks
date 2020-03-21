@@ -57,6 +57,7 @@ RUN set -ex && pip install \
     amuse-gadget2==13.1.0  \
     amuse-hermite==13.1.0 \
     amuse-hop==13.1.0 \
+    amuse-huayno==13.1.0 \
     amuse-mercury==13.1.0 \
     amuse-ph4==13.1.0 \
     amuse-phigrape==13.1.0 \
