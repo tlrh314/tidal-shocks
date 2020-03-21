@@ -50,9 +50,19 @@ RUN set -ex && \
     && jupyter nbextension enable toc2/main \
     && jupyter nbextension enable livemdpreview/livemdpreview
 
-RUN set -ex && \ 
-    pip install amuse-bhtree==13.1.0 amuse-framework==13.1.0 \
-        amuse-gadget2==13.1.0 amuse-hop==13.1.0 galpy==1.5.0
+RUN set -ex && pip install \
+    amuse-bhtree==13.1.0 \
+    amuse-fi==13.1.0 \
+    amuse-framework==13.1.0 \
+    amuse-gadget2==13.1.0  \
+    amuse-hermite==13.1.0 \
+    amuse-hop==13.1.0 \
+    amuse-mercury==13.1.0 \
+    amuse-ph4==13.1.0 \
+    amuse-phigrape==13.1.0 \
+    amuse-smalln==13.1.0 \
+    galpy==1.5.0
+
 
 COPY . /tidalshocks
 RUN chown -R tidalshocks:tidalshocks /tidalshocks
