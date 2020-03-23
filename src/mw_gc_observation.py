@@ -296,27 +296,27 @@ class MwGcObservation(object):
             has_tex=has_tex, verbose=verbose
         )
 
-    def sample_deBoer2019_bestfit_king(self, Nstars=1337, verbose=False):
+    def sample_deBoer2019_bestfit_king(self, Nstars=1337, seed=1337, verbose=False):
         W0_deB19 = self.deB19_fit["W_king"]
         M_deB19 = self.deB19_fit["M_king"]
         rt_deB19 = parsec2arcmin(self.deB19_fit["rt_king"], self.distance_kpc)
         return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=1,
-            Nstars=Nstars, verbose=verbose)
+            Nstars=Nstars, seed=seed, verbose=verbose)
 
-    def sample_deBoer2019_bestfit_wilson(self, Nstars=1337, verbose=False):
+    def sample_deBoer2019_bestfit_wilson(self, Nstars=1337, seed=1337, verbose=False):
         W0_deB19 = self.deB19_fit["W_wil"]
         M_deB19 = self.deB19_fit["M_wil"]
         rt_deB19 = parsec2arcmin(self.deB19_fit["rt_wil"], self.distance_kpc)
         return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=2,
-            Nstars=Nstars, verbose=verbose)
+            Nstars=Nstars, seed=seed, verbose=verbose)
 
-    def sample_deBoer2019_bestfit_limepy(self, Nstars=1337, verbose=False):
+    def sample_deBoer2019_bestfit_limepy(self, Nstars=1337, seed=1337, verbose=False):
         W0_deB19 = self.deB19_fit["W_lime"]
         g_deB19 = self.deB19_fit["g_lime"]
         M_deB19 = self.deB19_fit["M_lime"]
         rt_deB19 = parsec2arcmin(self.deB19_fit["rt_lime"], self.distance_kpc)
         return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=g_deB19,
-            Nstars=Nstars, verbose=verbose)
+            Nstars=Nstars, seed=seed, verbose=verbose)
 
     def add_deBoer2019_sampled_to_ax(self, ax, sampled, parm="rho", limepy_model=None,
             rmin=1e-3, rmax=1e3, Nbins=256, smooth=False, timing=False):

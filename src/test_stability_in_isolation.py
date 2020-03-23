@@ -9,7 +9,7 @@ import multiprocessing
 from functools import partial
 from matplotlib import pyplot
 pyplot.style.use("tlrh")
-if "freya" in platform.node(): pyplot.switch_backend("agg")
+pyplot.switch_backend("agg")
 from amuse.units import units
 from amuse.io import write_set_to_file
 from amuse.io import read_set_from_file
@@ -28,6 +28,7 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
     limepy_model = kwargs["limepy_model"]
     isolation = kwargs["isolation"]
     softening = kwargs["softening"]
+    seed = kwargs["seed"]
 
     print("  Loading snapshot {}: {}".format(i, fname))
     stars = read_set_from_file(fname, "hdf5")
@@ -36,12 +37,16 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
 
     com, comvel, Mtot, Ekin, Epot, Ltot, ptot = get_particle_properties(stars, w=None)
 
-    plot_fname = "{}{}_{}_{}_{}_{}_{:04d}.png".format(obs.outdir, obs.gc_slug,
+    plot_fname = "{}{}_{}_{}_{}_{}_{}_{:04d}.png".format(obs.outdir, obs.gc_slug,
         model_name, "isolation" if isolation else "MWPotential2014", len(stars),
-        softening, i)
+        softening, seed, i
+    )
     fig = plot_SigmaR_vs_R(obs, limepy_model, stars,
         model_name=model_name, Tsnap=Tsnap, softening=softening,
     )
+    ax = fig.axes[0]
+    info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
+    ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
     fig.savefig(plot_fname)
     print("  Saved: {0}".format(plot_fname))
     pyplot.close(fig)
@@ -53,15 +58,22 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
     )
 
 
-def analyse_isolation(obs, model_name, Nstars, softening,
+def analyse_isolation(obs, model_name, Nstars, softening, seed,
         rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
-    # REMOVE
-    limepy_model, limepy_sampled, amuse_sampled, converter = \
-        obs.sample_deBoer2019_bestfit_king(Nstars=Nstars)
+    # REMOVE b/c DRY violation and could result in inconsistency /w MwGcSimulation
+    if model_name == "king":
+        limepy_model, limepy_sampled, amuse_sampled, converter = \
+            obs.sample_deBoer2019_bestfit_king(Nstars=Nstars, seed=seed)
+    elif model_name == "wilson":
+        limepy_model, limepy_sampled, amuse_sampled, converter = \
+            obs.sample_deBoer2019_bestfit_wilson(Nstars=Nstars, seed=seed)
+    elif model_name == "limepy":
+        limepy_model, limepy_sampled, amuse_sampled, converter = \
+            obs.sample_deBoer2019_bestfit_limepy(Nstars=Nstars, seed=seed)
     # END REMOVE
 
-    snap_base = "{}{}_{}_isolation_{}_{}_*.h5".format(obs.outdir, obs.gc_slug,
-        model_name, Nstars, softening)
+    snap_base = "{}{}_{}_isolation_{}_{}_{}_*.h5".format(obs.outdir, obs.gc_slug,
+        model_name, Nstars, softening, seed)
     snapshots = sorted(glob.glob(snap_base), key=lambda s:
         [ int(c) for c in re.split('(\d+)', s) if c.isdigit()]
     )
@@ -72,7 +84,8 @@ def analyse_isolation(obs, model_name, Nstars, softening,
     with multiprocessing.Pool(multiprocessing.cpu_count()) as p:
         info = numpy.array(
             p.map(partial(analyse_snapshot, obs=obs, model_name=model_name,
-                limepy_model=limepy_model, softening=0.1, isolation=True),
+                limepy_model=limepy_model, softening=softening, seed=seed,
+                isolation=True),
             enumerate(snapshots))
         )
 
@@ -93,14 +106,15 @@ def analyse_isolation(obs, model_name, Nstars, softening,
     ax.plot(Tsnap, 100*((Epot+Ekin) - (Epot0+Ekin0))/(Epot0+Ekin0), label="Ekin+Etot")
     ax.axhline(0, ls=":", c="k", lw=1)
     ax.set_xlabel("Time [ Myr ]")
-    ax.set_ylabel("Energy difference / Energy")
+    ax.set_ylabel("Energy difference / Energy [ % ]")
     ax.legend(loc="best", fontsize=16, frameon=False)
-    pyplot.show(fig)
+    fname = snap_base.replace("*.h5", "energy.png")
+    pyplot.savefig(fname)
 
 
 def dump_snapshot(obs, sim, stars, time, i):
-    fname = "{}{}_{}_isolation_{}_{}_{:04d}.h5".format(obs.outdir, obs.gc_slug,
-        sim.model_name, sim.Nstars, sim.softening.value_in(units.parsec), i
+    fname = "{}{}_{}_isolation_{}_{}_{}_{:04d}.h5".format(obs.outdir, obs.gc_slug,
+        sim.model_name, sim.Nstars, sim.softening.value_in(units.parsec), sim.seed, i
     )
     print("    Dumping snapshot: {0}".format(fname))
     if os.path.exists(fname) and os.path.isfile(fname):
@@ -183,3 +197,15 @@ if __name__ == "__main__":
         number_of_workers=args.number_of_workers, softening=args.softening,
         isolation=True, seed=args.seed, do_something=dump_snapshot
     )
+
+    analyse_isolation(obs, args.model_name, args.Nstars, args.softening, args.seed,
+        rmin=1e-3, rmax=1e3, Nbins=256, smooth=False)
+
+    pngs = "{}{}_{}_{}_{}_{}_{}_%4d.png".format(obs.outdir, obs.gc_slug,
+        args.model_name, "isolation", args.Nstars, args.softening, args.seed)
+    print(pngs)
+    out = pngs.replace("_%4d.png", ".mp4")
+    print(out)
+    ffmpeg = 'ffmpeg -y -r 3 -i "{}" {} -s "2000:2000" -an "{}"'.format(
+        pngs, "-profile:v high444 -level 4.1 -c:v libx264 -preset slow -crf 25", out)
+    os.system(ffmpeg)

@@ -178,9 +178,6 @@ class MwGcSimulation(object):
             Nsnapshots=100, code="fi", number_of_workers=4, softening=1.0, seed=-1,
             isolation=True, do_something=lambda obs, sim, stars, Tsnap, i: stars):
 
-        if seed >= 0:
-            numpy.seed(seed)
-
         self.logger = logger
         self.model_name = model_name
         self.Nstars = Nstars
@@ -190,6 +187,8 @@ class MwGcSimulation(object):
         self.number_of_workers = number_of_workers
         self.softening = softening | units.parsec
         self.isolation = isolation
+        self.seed = seed
+
 
         self.new_particles_cluster(obs)
         self.create_cluster_code(code)
@@ -221,21 +220,23 @@ class MwGcSimulation(object):
         # Sample initial conditions for King/Wilson/Limepy MLEs from deBoer+ 2019
         if self.model_name == "king":
             self.limepy_model, limepy_sampled, self.amuse_sampled, self.converter = \
-                obs.sample_deBoer2019_bestfit_king(Nstars=self.Nstars)
+                obs.sample_deBoer2019_bestfit_king(Nstars=self.Nstars, seed=self.seed)
         elif self.model_name == "wilson":
             self.limepy_model, limepy_sampled, self.amuse_sampled, self.converter = \
-                obs.sample_deBoer2019_bestfit_wilson(Nstars=self.Nstars)
+                obs.sample_deBoer2019_bestfit_wilson(Nstars=self.Nstars, seed=self.seed)
         elif self.model_name == "limepy":
             self.limepy_model, limepy_sampled, self.amuse_sampled, self.converter = \
-                obs.sample_deBoer2019_bestfit_limepy(Nstars=self.Nstars)
+                obs.sample_deBoer2019_bestfit_limepy(Nstars=self.Nstars, seed=self.seed)
 
         # Verify that the sampled profile matches the observed profile (as well as
         # the requested Limepy model, of course)
-        fname = "{}{}_{}_ICs.png".format(obs.outdir, obs.gc_slug,
-            "isolation" if self.isolation else "MWPotential2014")
+        fname = "{}{}_{}_{}_{}_{}_{}_ICs.png".format(obs.outdir, obs.gc_slug,
+            self.model_name, "isolation" if self.isolation else "MWPotential2014",
+            self.Nstars, self.softening.value_in(units.parsec), self.seed
+        )
         plot_SigmaR_vs_R(obs, self.limepy_model, self.amuse_sampled,
-            model_name=self.model_name, Tsnap="ICs", softening=self.softening.value_in(
-                units.parsec)
+            model_name=self.model_name, Tsnap="ICs",
+            softening=self.softening.value_in(units.parsec)
         ).savefig(fname)
         self.logger.info("\nSaved: {0}".format(fname))
 
