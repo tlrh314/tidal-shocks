@@ -169,7 +169,7 @@ def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=No
         ax.fill_between(numpy.arange(xlim[0], softening, 0.01), 0, 1,
             facecolor="grey", edgecolor="grey", alpha=0.2, transform=trans)
 
-    ax.legend(loc="bottom left", fontsize=20)
+    ax.legend(loc="lower left", fontsize=20)
     return fig
 
 
