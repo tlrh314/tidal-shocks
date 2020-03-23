@@ -21,7 +21,7 @@
 
 gc_name=$*
 echo "Running isolation.sh for gc_name: ${gc_name}"
-export OMP_NUM_THREADS=16
+export OMP_NUM_THREADS=8
 for seed in 1337; do
     for N in 1000 10000; do
         for softening in 10.0 1.0 0.1 0.01; do
@@ -39,6 +39,8 @@ for seed in 1337; do
                 for f in $(ls "out/ngc104/ngc104_${dir}_"*); do
                     mv $f "out/ngc104/ngc104_${dir}/"
                 done
+
+                mv _amuse_output_data/gadget2/output/*.txt "out/ngc104/ngc104_${dir}/"
             done
         done
     done
