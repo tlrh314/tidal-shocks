@@ -142,8 +142,8 @@ def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=No
 
     fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
 
-    if type(Tsnap) == float:
-        suptitle = "{} at T={:<10.2f} Myr".format(obs.gc_name, Tsnap.value_in(units.Myr))
+    if type(Tsnap) == float or type(Tsnap) == numpy.float64:
+        suptitle = "{} at T={:<10.2f} Myr".format(obs.gc_name, Tsnap)
     elif Tsnap == "ICs":
         suptitle = "{} ICs".format(obs.gc_name)
     else:
