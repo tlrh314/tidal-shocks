@@ -48,13 +48,14 @@ RUN set -ex && \
     && jupyter nbextension enable autosavetime/main \
     && jupyter nbextension enable ruler/main \
     && jupyter nbextension enable toc2/main \
-    && jupyter nbextension enable livemdpreview/livemdpreview
-
-RUN set -ex && pip install \
+    && jupyter nbextension enable livemdpreview/livemdpreview \
+\
+    && pip install \
     amuse-bhtree==13.1.0 \
     amuse-fi==13.1.0 \
     amuse-framework==13.1.0 \
     amuse-gadget2==13.1.0  \
+    amuse-galactics==13.1.0  \
     amuse-hermite==13.1.0 \
     amuse-hop==13.1.0 \
     amuse-huayno==13.1.0 \
@@ -62,7 +63,9 @@ RUN set -ex && pip install \
     amuse-ph4==13.1.0 \
     amuse-phigrape==13.1.0 \
     amuse-smalln==13.1.0 \
-    galpy==1.5.0
+    galpy==1.5.0 \
+\
+    && echo "localhost slots=100" >> /etc/openmpi/openmpi-default-hostfile
 
 
 COPY . /tidalshocks
