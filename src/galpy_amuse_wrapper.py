@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import numpy
+import signal
 import platform
 import argparse
 import matplotlib
@@ -10,7 +11,6 @@ from matplotlib import pyplot
 from matplotlib import gridspec
 from amuse.units import units
 from amuse.units import nbody_system
-from amuse.units.quantities import ScalarQuantity
 from amuse.datamodel import Particles
 from amuse.datamodel import ParticlesWithUnitsConverted
 from amuse.ic.plummer import new_plummer_sphere
@@ -33,31 +33,12 @@ if "/limepy" not in sys.path:
     sys.path.insert(0, "{}/limepy".format(BASEDIR))
 import limepy   # using tlrh314/limepy fork
 
+from amuse_wrapper import get_particle_properties
+
 
 if "/supaharris" not in sys.path:
     sys.path.insert(0, "{}/supaharris".format(BASEDIR))
 from utils import parsec2arcmin
-
-
-def print_stuff(p, w="  "):
-    com = p.center_of_mass().as_quantity_in(units.parsec)
-    comvel = p.center_of_mass_velocity().as_quantity_in(units.km/units.s)
-    Mtot = p.total_mass().as_quantity_in(units.MSun)
-    Ekin = p.kinetic_energy().as_quantity_in(units.J)
-    Epot = p.potential_energy().as_quantity_in(units.J)
-    Ltot = p.total_angular_momentum().as_quantity_in(units.MSun*units.parsec**2/units.Myr)
-    ptot = p.total_momentum().as_quantity_in(units.MSun*units.parsec/units.Myr)
-
-    print("{}com:       {}".format(w, com))
-    print("{}comvel:    {}".format(w, comvel))
-    print("{}Mtot:      {}".format(w, Mtot))
-    print("{}Ekin:      {}".format(w, Ekin))
-    print("{}Epot:      {}".format(w, Epot))
-    print("{}Ekin/Epot: {}".format(w, Ekin/Epot))
-    print("{}Ltot:      {}".format(w, Ltot))
-    print("{}ptot:      {}".format(w, ptot))
-
-    return com, comvel, Mtot, Ekin, Epot, Ltot, ptot
 
 
 def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
@@ -130,7 +111,7 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     amuse.vz += Vinit[2]
 
     print("\nlimepy_to_amuse, post-converter business")
-    print_stuff(amuse)
+    get_particle_properties(amuse)
 
     # Now let limepy scale the model because that's what we'll return
     # and we kinda like the model to be in physical units. Also project :-).
@@ -161,7 +142,7 @@ def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=No
 
     fig, ax = pyplot.subplots(1, 1, figsize=(12, 12))
 
-    if type(Tsnap) == ScalarQuantity:
+    if type(Tsnap) == float:
         suptitle = "{} at T={:<10.2f} Myr".format(obs.gc_name, Tsnap.value_in(units.Myr))
     elif Tsnap == "ICs":
         suptitle = "{} ICs".format(obs.gc_name)
@@ -179,7 +160,7 @@ def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=No
 
     # Sampled Sigma(R) profile
     obs.add_deBoer2019_sampled_to_ax(ax, amuse_sampled, limepy_model=limepy_model,
-        parm="Sigma", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth)
+        parm="Sigma", rmin=rmin, rmax=rmax, Nbins=Nbins, smooth=smooth, timing=True)
 
     if softening is not None:
         xlim = ax.get_xlim()
@@ -188,47 +169,48 @@ def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=No
         ax.fill_between(numpy.arange(xlim[0], softening, 0.01), 0, 1,
             facecolor="grey", edgecolor="grey", alpha=0.2, transform=trans)
 
-    ax.legend(fontsize=20)
+    ax.legend(loc="bottom left", fontsize=20)
     return fig
 
 
 class MwGcSimulation(object):
     def __init__(self, logger, obs, model_name, Nstars=1000, endtime=1000.0,
             Nsnapshots=100, code="fi", number_of_workers=4, softening=1.0, seed=-1,
-            isolation=True, do_something=lambda obs, sim, stars, time, i: stars):
+            isolation=True, do_something=lambda obs, sim, stars, Tsnap, i: stars):
 
         if seed >= 0:
             numpy.seed(seed)
 
         self.logger = logger
+        self.model_name = model_name
         self.Nstars = Nstars
         self.endtime = endtime | units.Myr
         self.Nsnapshots = Nsnapshots
         self.delta_t = self.endtime / self.Nsnapshots
+        self.number_of_workers = number_of_workers
         self.softening = softening | units.parsec
         self.isolation = isolation
 
-        self.model_name = model_name
         self.new_particles_cluster(obs)
         self.create_cluster_code(code)
         self.setup_bridge()
 
-        time = 0 | units.Myr  # kinda useless
+        Tstart = 0 | units.Myr  # kinda useless
         sum_energy = self.bridge.kinetic_energy + self.bridge.potential_energy
         energy0 = sum_energy.as_quantity_in(units.J)
         virial_radius = self.bridge.particles.virial_radius().as_quantity_in(units.parsec)
-        print("\nTime          : {}".format(time))
+        print("\nTstart        : {}".format(Tstart))
         print("Energy        : {}".format(energy0))
         print("Virial radius : {}".format(virial_radius))
 
         self.evolve_model(do_something, obs)
 
-        time = self.bridge.model_time.as_quantity_in(units.Myr)
+        Tend = self.bridge.model_time.as_quantity_in(units.Myr)
         sum_energy = self.bridge.kinetic_energy + self.bridge.potential_energy
         energy = sum_energy.as_quantity_in(units.J)
         virial_radius = self.bridge.particles.virial_radius().as_quantity_in(units.parsec)
 
-        print("\nTime          : {}".format(time))
+        print("\nTend          : {}".format(Tend))
         print("Energy        : {}".format(energy))
         print("Delta E       : {}".format((energy-energy0)/energy0))
         print("Virial radius : {}".format(virial_radius))
@@ -259,17 +241,16 @@ class MwGcSimulation(object):
 
     def evolve_model(self, do_something, obs):
         try:
-            for i, time in enumerate(self.delta_t * numpy.arange(1, self.Nsnapshots+1)):
-                self.bridge.evolve_model(time)
+            for i, dt in enumerate(self.delta_t * numpy.arange(1, self.Nsnapshots+1)):
+                self.bridge.evolve_model(dt)
                 print("\nTime step {}/{} --> time: {:.3f} Myr".format(i,
                     self.Nsnapshots, self.bridge.model_time.value_in(units.Myr)
                 ))
 
                 # Copy stars from gravity to output or analyze the simulation
-                print("  channel_from_gravity_to_stars.copy()")
                 self.channel_from_gravity_to_stars.copy()
-                print_stuff(self.amuse_sampled, w="    ")
 
+                # get_particle_properties(self.amuse_sampled, w="    ")
                 self.amuse_sampled = do_something(obs, self,
                     self.amuse_sampled, self.bridge.model_time, i
                 )
@@ -277,7 +258,6 @@ class MwGcSimulation(object):
                 # If you edited the stars particle set, for example to remove stars from the
                 # array because they have been kicked far from the cluster, you need to
                 # copy the array back to gravity:
-                print("  channel_from_stars_to_gravity.copy()")
                 self.channel_from_stars_to_gravity.copy()
         except Exception as e:
             self.bridge.stop()
@@ -285,19 +265,21 @@ class MwGcSimulation(object):
 
     def create_cluster_code(self, code):
         self.cluster_code = getattr(self, "new_code_"+code)()
-        print("\nCode Parameters\n{}\n".format(self.cluster_code.parameters))
+        print("cluster_code.parameters\n", self.cluster_code.parameters)
+        self.cluster_code.commit_particles()
 
-    def setup_bridge(self):
         # Setup channels between stars particle dataset and the cluster code
-        print("\nSetting up channel from stars to gravity and vice versa")
         self.channel_from_stars_to_gravity = self.amuse_sampled.new_channel_to(
             self.cluster_code.particles, attributes =["mass", "x", "y", "z", "vx", "vy", "vz"])
         self.channel_from_gravity_to_stars = self.cluster_code.particles.new_channel_to(
             self.amuse_sampled, attributes =["mass", "x", "y", "z", "vx", "vy", "vz"])
-        print("Done setting up channels")
+
+
+    def setup_bridge(self):
+        # If we want to test w/o bridge integrator, but /w cluster_code directly
+        # self.bridge = self.cluster_code
 
         # Setup gravity bridge
-        print("Setting up bridge")
         self.bridge = bridge.Bridge(use_threading=False)
         if self.isolation:
             # As a stability check, we first simulate the star cluster in isolation
@@ -309,23 +291,27 @@ class MwGcSimulation(object):
             self.bridge.add_system(self.cluster_code, (potential, ))
             # External potential potential still needs to be added to system so it evolves with time
             self.bridge.add_system(potential, )
+
+        # TODO: CAREFUL, Gadget2 does not allow timestep to be written, and
+        # defaults to 0.0. So if we set bridge.timestep to cluster_code's timestep,
+        # then the bridge will have 0.0 --> infinite loop in Gadget2 :-(
+        # Only took me 8 hours to realise this mistake ...
         # Set how often to update external potential
-        self.bridge.timestep = self.cluster_code.parameters.timestep / 2.0
-        print("Done setting up bridge")
+        # self.bridge.timestep = self.cluster_code.parameters.timestep / 2.0
 
     def stop(self):
         self.bridge.stop()
 
     def new_code_fi(self):
-        os.environ["OMP_NUM_THREADS"] = "16"
-        result = Fi(self.converter, number_of_workers=1)
+        os.environ["OMP_NUM_THREADS"] = "{}".format(self.number_of_workers)
+        result = Fi(self.converter, number_of_workers=1, mode="openmp",
+            redirection="none")  # or "null" to silence
         result.parameters.self_gravity_flag = True
         result.parameters.use_hydro_flag = False
         result.parameters.radiation_flag = False
         # result.parameters.periodic_box_size = 500 | units.parsec
         result.parameters.timestep = 0.125 | units.Myr
         result.particles.add_particles(self.amuse_sampled)
-        result.commit_particles()
         return result
 
     def new_code_ph4(self):
@@ -333,7 +319,6 @@ class MwGcSimulation(object):
         result = ph4(mode="gpu")
         result.parameters.epsilon_squared = self.softening**2
         result.particles.add_particles(self.amuse_sampled)
-        result.commit_particles()
         return result
 
     def new_code_huayno(self):
@@ -341,25 +326,25 @@ class MwGcSimulation(object):
         result = Huayno()
         result.parameters.epsilon_squared = self.softening**2
         result.particles.add_particles(self.amuse_sampled)
-        result.commit_particles()
         return result
 
     def new_code_bhtree(self):
         sys.exit(-1)
         result = BHTree()
         result.parameters.epsilon_squared = self.softening**2
-        # result.parameters.timestep = 0.125 * self.interaction_timestep
+        result.parameters.timestep = 0.125 | units.Myr
         result.particles.add_particles(self.amuse_sampled)
-        result.commit_particles()
         return result
 
     def new_code_gadget2(self):
-        sys.exit(-1)
-        result = Gadget2()
+        result = Gadget2(self.converter, number_of_workers=self.number_of_workers,
+            redirection="null")
         result.parameters.epsilon_squared = self.softening**2
-        # result.parameters.timestep = 0.125 * self.interaction_timestep
+        result.parameters.stopping_conditions_number_of_steps = 2
+        result.stopping_conditions.number_of_steps_detection.enable()
+        result.parameters.max_size_timestep = self.delta_t/1000
+        result.parameters.time_max = 2*self.endtime
         result.particles.add_particles(self.amuse_sampled)
-        result.commit_particles()
         return result
 
     def new_code_mercury(self):
@@ -368,7 +353,6 @@ class MwGcSimulation(object):
         result.parameters.epsilon_squared = self.softening**2
         # result.parameters.timestep = 0.125 * self.interaction_timestep
         result.particles.add_particles(self.amuse_sampled)
-        result.commit_particles()
         return result
 
     def new_code_hermite(self):
@@ -376,7 +360,6 @@ class MwGcSimulation(object):
         result = Hermite()
         result.parameters.epsilon_squared = self.softening**2
         result.particles.add_particles(self.amuse_sampled)
-        result.commit_particles()
         return result
 
     def new_code_phigrape(self):
@@ -385,7 +368,6 @@ class MwGcSimulation(object):
         result.parameters.initialize_gpu_once = 1
         result.parameters.epsilon_squared = self.softening**2
         result.particles.add_particles(self.amuse_sampled)
-        result.commit_particles()
         return result
 
 
@@ -444,6 +426,7 @@ def integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
     # Also do_something for the ICs
     i = int(time/tend * Nsteps)  # should be 0
     stars = do_something(stars, time, i)
+
     try:
         while time < tend:
             # Evolve

@@ -49,24 +49,30 @@ def print_particleset_info(p, converter, modelname):
     print("")
 
 
-def get_radial_profiles(p, c=None, rmin=1e-3, rmax=1e3, Nbins=256, timing=True):
-    """ Generate radial profile of Particleset p /w center c """
-
-    print("\nget_radial_profiles")
-    print("  com:  {}".format(p.center_of_mass().value_in(units.parsec)))
-    print("  comvel:  {}".format(p.center_of_mass_velocity().value_in(units.km/units.s)))
+def get_particle_properties(p, w="  "):
+    com = p.center_of_mass().as_quantity_in(units.parsec)
+    comvel = p.center_of_mass_velocity().as_quantity_in(units.km/units.s)
     Mtot = p.total_mass().as_quantity_in(units.MSun)
-    print("  Mtot:   {}".format(Mtot))
     Ekin = p.kinetic_energy().as_quantity_in(units.J)
-    print("  Ekin:   {}".format(Ekin))
     Epot = p.potential_energy().as_quantity_in(units.J)
-    print("  Epot:   {}".format(Epot))
-    print("  Ekin/Epot: {}".format(Ekin/Epot))
     Ltot = p.total_angular_momentum().as_quantity_in(units.MSun*units.parsec**2/units.Myr)
-    print("  Ltot:   {}".format(Ltot))
     ptot = p.total_momentum().as_quantity_in(units.MSun*units.parsec/units.Myr)
-    print("  ptot:      {}".format(ptot))
-    print("")
+
+    if w is not None:
+        print("{}com:       {}".format(w, com))
+        print("{}comvel:    {}".format(w, comvel))
+        print("{}Mtot:      {}".format(w, Mtot))
+        print("{}Ekin:      {}".format(w, Ekin))
+        print("{}Epot:      {}".format(w, Epot))
+        print("{}Ekin/Epot: {}".format(w, Ekin/Epot))
+        print("{}Ltot:      {}".format(w, Ltot))
+        print("{}ptot:      {}".format(w, ptot))
+
+    return com, comvel, Mtot, Ekin, Epot, Ltot, ptot
+
+
+def get_radial_profiles(p, c=None, rmin=1e-3, rmax=1e3, Nbins=256, timing=False):
+    """ Generate radial profile of Particleset p /w center c """
 
     start = time.time()
 

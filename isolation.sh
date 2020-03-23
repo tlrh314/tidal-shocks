@@ -21,5 +21,5 @@
 
 gc_name=$*
 echo "Running isolation.sh for gc_name: ${gc_name}"
-export OMP_NUM_THREADS=16
-python src/test_stability_in_isolation.py -gc "${gc_name}" -m "king" -N 1000 -t 1000 --Nsnap 100
+export OMP_NUM_THREADS=4
+python src/test_stability_in_isolation.py -gc "${gc_name}" -m "king" -N 50000 -t 1000 --Nsnap 100 -c "gadget2"

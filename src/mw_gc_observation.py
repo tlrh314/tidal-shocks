@@ -319,7 +319,7 @@ class MwGcObservation(object):
             Nstars=Nstars, verbose=verbose)
 
     def add_deBoer2019_sampled_to_ax(self, ax, sampled, parm="rho", limepy_model=None,
-            rmin=1e-3, rmax=1e3, Nbins=256, smooth=False, timing=True):
+            rmin=1e-3, rmax=1e3, Nbins=256, smooth=False, timing=False):
         if parm not in ["rho", "Sigma", "mc"]:
             self.logger.error("ERROR: cannot add parm '{}' to ax".format(parm))
             return
