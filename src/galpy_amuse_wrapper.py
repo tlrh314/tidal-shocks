@@ -240,8 +240,11 @@ class MwGcSimulation(object):
         self.logger.info("\nSaved: {0}".format(fname))
 
     def evolve_model(self, do_something, obs):
+        # First we'd like to do_something /w ICs
+        do_something(obs, self, self.amuse_sampled, self.bridge.model_time, 0)
         try:
             for i, dt in enumerate(self.delta_t * numpy.arange(1, self.Nsnapshots+1)):
+                i+=1
                 self.bridge.evolve_model(dt)
                 print("\nTime step {}/{} --> time: {:.3f} Myr".format(i,
                     self.Nsnapshots, self.bridge.model_time.value_in(units.Myr)
