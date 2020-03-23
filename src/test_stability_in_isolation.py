@@ -154,10 +154,6 @@ def new_argument_parser():
 
 if __name__ == "__main__":
     import logging
-    logging.getLogger("code").setLevel(logging.CRITICAL)
-    logging.getLogger("amuse").setLevel(logging.CRITICAL)
-    logging.getLogger("amuse.rfi").setLevel(logging.CRITICAL)
-    logging.getLogger("amuse.rfi.channel").setLevel(logging.CRITICAL)
     logging.getLogger("keyring").setLevel(logging.CRITICAL)
     logging.getLogger("matplotlib").setLevel(logging.CRITICAL)
     logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format="%(message)s")

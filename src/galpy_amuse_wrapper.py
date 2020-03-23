@@ -337,8 +337,10 @@ class MwGcSimulation(object):
         return result
 
     def new_code_gadget2(self):
+        print("new_code_gadget2")
         result = Gadget2(self.converter, number_of_workers=self.number_of_workers,
             redirection="null")
+        print("new_code_gadget2 --> result.state =", result.get_name_of_current_state())
         result.parameters.epsilon_squared = self.softening**2
         result.parameters.stopping_conditions_number_of_steps = 2
         result.stopping_conditions.number_of_steps_detection.enable()
