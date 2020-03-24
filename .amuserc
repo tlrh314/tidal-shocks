@@ -1,0 +1,7 @@
+[channel]
+must_check_if_worker_is_up_to_date=0
+use_python_interpreter=1
+channel_type = sockets
+redirection = none
+[data]
+output_data_root_directory=_amuse_output_data
