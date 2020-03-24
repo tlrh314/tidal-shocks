@@ -14,14 +14,6 @@ from amuse.units import nbody_system
 from amuse.datamodel import Particles
 from amuse.datamodel import ParticlesWithUnitsConverted
 from amuse.ic.plummer import new_plummer_sphere
-from amuse.community.fi.interface import Fi
-from amuse.community.ph4.interface import ph4
-from amuse.community.huayno.interface import Huayno
-from amuse.community.bhtree.interface import BHTree
-from amuse.community.gadget2.interface import Gadget2
-from amuse.community.mercury.interface import Mercury
-from amuse.community.hermite.interface import Hermite
-from amuse.community.phigrape.interface import PhiGRAPE
 from amuse.couple import bridge
 from galpy.orbit import Orbit
 from galpy.potential import to_amuse
@@ -307,6 +299,7 @@ class MwGcSimulation(object):
         self.bridge.stop()
 
     def new_code_fi(self):
+        from amuse.community.fi.interface import Fi
         os.environ["OMP_NUM_THREADS"] = "{}".format(self.number_of_workers)
         result = Fi(self.converter, number_of_workers=1, mode="openmp",
             redirection="none")  # or "null" to silence
@@ -319,6 +312,7 @@ class MwGcSimulation(object):
         return result
 
     def new_code_ph4(self):
+        from amuse.community.ph4.interface import ph4
         sys.exit(-1)
         result = ph4(mode="gpu")
         result.parameters.epsilon_squared = self.softening**2
@@ -326,6 +320,7 @@ class MwGcSimulation(object):
         return result
 
     def new_code_huayno(self):
+        from amuse.community.huayno.interface import Huayno
         sys.exit(-1)
         result = Huayno()
         result.parameters.epsilon_squared = self.softening**2
@@ -333,6 +328,7 @@ class MwGcSimulation(object):
         return result
 
     def new_code_bhtree(self):
+        from amuse.community.bhtree.interface import BHTree
         sys.exit(-1)
         result = BHTree()
         result.parameters.epsilon_squared = self.softening**2
@@ -342,6 +338,7 @@ class MwGcSimulation(object):
 
     def new_code_gadget2(self):
         print("new_code_gadget2")
+        from amuse.community.gadget2.interface import Gadget2
         result = Gadget2(self.converter, number_of_workers=self.number_of_workers,
             redirection="null")
         print("new_code_gadget2 --> result.state =", result.get_name_of_current_state())
@@ -354,6 +351,7 @@ class MwGcSimulation(object):
         return result
 
     def new_code_mercury(self):
+        from amuse.community.mercury.interface import Mercury
         sys.exit(-1)
         result = Mercury()
         result.parameters.epsilon_squared = self.softening**2
@@ -362,6 +360,7 @@ class MwGcSimulation(object):
         return result
 
     def new_code_hermite(self):
+        from amuse.community.hermite.interface import Hermite
         sys.exit(-1)
         result = Hermite()
         result.parameters.epsilon_squared = self.softening**2
@@ -369,6 +368,7 @@ class MwGcSimulation(object):
         return result
 
     def new_code_phigrape(self):
+        from amuse.community.phigrape.interface import PhiGRAPE
         sys.exit(-1)
         result = PhiGRAPE(mode="gpu")
         result.parameters.initialize_gpu_once = 1
