@@ -11,12 +11,12 @@ RUN set -ex \
     # Install Build/Runtime dependencies ...
     && apt-get install -y --no-install-recommends \
 \
-        # ... for AMUSE (OpenMPI)
+        # ... for AMUSE (mpich)
         build-essential gfortran python-dev \
-        libopenmpi-dev openmpi-bin \
+        mpich libmpich-dev \
         libgsl-dev cmake libfftw3-3 libfftw3-dev libfftw3-mpi-dev \
         libgmp3-dev libmpfr6 libmpfr-dev \
-        libhdf5-serial-dev libhdf5-openmpi-dev hdf5-tools \
+        libhdf5-serial-dev hdf5-tools \
         git \
         # ... backend for matplotlib.pyplot
         tk \ 
@@ -55,7 +55,6 @@ RUN set -ex && \
     amuse-fi==13.1.0 \
     amuse-framework==13.1.0 \
     amuse-gadget2==13.1.0  \
-    amuse-galactics==13.1.0  \
     amuse-hermite==13.1.0 \
     amuse-hop==13.1.0 \
     amuse-huayno==13.1.0 \
@@ -63,15 +62,14 @@ RUN set -ex && \
     amuse-ph4==13.1.0 \
     amuse-phigrape==13.1.0 \
     amuse-smalln==13.1.0 \
-    galpy==1.5.0 \
-\
-    && echo "localhost slots=100" >> /etc/openmpi/openmpi-default-hostfile
+    galpy==1.5.0
 
 
 COPY . /tidalshocks
 RUN chown -R tidalshocks:tidalshocks /tidalshocks
 
 ENV SYSTYPE=Docker
+ENV HYDRA_HOST_FILE=/tidalshocks/hostfile_mpich2
 USER tidalshocks
 
 ENTRYPOINT ["/tidalshocks/entrypoint.sh"]

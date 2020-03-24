@@ -3,7 +3,7 @@ version: "3.7"
 services:
   notebook:
     build: .
-    image: tidalshocks
+    image: tidalshocks:mpich
     container_name: notebook 
     environment:
       DISPLAY: $DISPLAY
