@@ -103,7 +103,7 @@ def analyse_isolation(obs, model_name, Nstars, softening, seed,
     fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
     ax.plot(Tsnap, 100*(Ekin-Ekin0)/Ekin0, label="Ekin")
     ax.plot(Tsnap, 100*(Epot-Epot0)/Epot0, label="Epot")
-    ax.plot(Tsnap, 100*((Epot+Ekin) - (Epot0+Ekin0))/(Epot0+Ekin0), label="Ekin+Etot")
+    ax.plot(Tsnap, 100*((Epot+Ekin) - (Epot0+Ekin0))/(Epot0+Ekin0), label="Ekin+Epot")
     ax.axhline(0, ls=":", c="k", lw=1)
     ax.set_xlabel("Time [ Myr ]")
     ax.set_ylabel("Energy difference / Energy [ % ]")

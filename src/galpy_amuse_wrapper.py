@@ -171,6 +171,8 @@ class MwGcSimulation(object):
             isolation=True, do_something=lambda obs, sim, stars, Tsnap, i: stars):
 
         self.logger = logger
+        self.outdir = obs.outdir
+        self.gc_slug = obs.gc_slug
         self.model_name = model_name
         self.Nstars = Nstars
         self.endtime = endtime | units.Myr
@@ -220,6 +222,11 @@ class MwGcSimulation(object):
             self.limepy_model, limepy_sampled, self.amuse_sampled, self.converter = \
                 obs.sample_deBoer2019_bestfit_limepy(Nstars=self.Nstars, seed=self.seed)
 
+
+        self.amuse_sampled.scale_to_standard(self.converter)
+        print("\new_particles_cluster, post-scale_to_standard business")
+        get_particle_properties(self.amuse_sampled)
+
         # Verify that the sampled profile matches the observed profile (as well as
         # the requested Limepy model, of course)
         fname = "{}{}_{}_{}_{}_{}_{}_ICs.png".format(obs.outdir, obs.gc_slug,
@@ -260,6 +267,7 @@ class MwGcSimulation(object):
             raise
 
     def create_cluster_code(self, code):
+        print(os.environ)
         self.cluster_code = getattr(self, "new_code_"+code)()
         print("cluster_code.parameters\n", self.cluster_code.parameters)
         self.cluster_code.commit_particles()
@@ -273,10 +281,11 @@ class MwGcSimulation(object):
 
     def setup_bridge(self):
         # If we want to test w/o bridge integrator, but /w cluster_code directly
-        # self.bridge = self.cluster_code
+        self.bridge = self.cluster_code
+        return
 
         # Setup gravity bridge
-        self.bridge = bridge.Bridge(use_threading=False)
+        self.bridge = bridge.Bridge(use_threading=False, verbose=True)
         if self.isolation:
             # As a stability check, we first simulate the star cluster in isolation
             self.bridge.add_system(self.cluster_code, )
@@ -288,12 +297,8 @@ class MwGcSimulation(object):
             # External potential potential still needs to be added to system so it evolves with time
             self.bridge.add_system(potential, )
 
-        # TODO: CAREFUL, Gadget2 does not allow timestep to be written, and
-        # defaults to 0.0. So if we set bridge.timestep to cluster_code's timestep,
-        # then the bridge will have 0.0 --> infinite loop in Gadget2 :-(
-        # Only took me 8 hours to realise this mistake ...
         # Set how often to update external potential
-        # self.bridge.timestep = self.cluster_code.parameters.timestep / 2.0
+        self.bridge.timestep = self.delta_t
 
     def stop(self):
         self.bridge.stop()
@@ -339,13 +344,38 @@ class MwGcSimulation(object):
     def new_code_gadget2(self):
         print("new_code_gadget2")
         from amuse.community.gadget2.interface import Gadget2
-        result = Gadget2(self.converter, number_of_workers=self.number_of_workers,
-            redirection="null")
+        result = Gadget2(unit_converter=self.converter,
+            number_of_workers=self.number_of_workers, redirection="null")
         print("new_code_gadget2 --> result.state =", result.get_name_of_current_state())
+
+        # Set the gadget_output_directory
+        outdir = "{}{}_{}_{}_{}_{}_{}".format(self.outdir, self.gc_slug,
+            self.model_name, "isolation" if self.isolation else "MWPotential2014",
+            self.Nstars, self.softening.value_in(units.parsec), self.seed
+        )
+        if not os.path.exists(outdir) or not os.path.isdir(outdir):
+            print("Created,", outdir)
+            os.mkdir(outdir)
+        result.parameters.gadget_output_directory = outdir
+        sjenkie = input("Press any key to continue")
+
+        # Set softening
         result.parameters.epsilon_squared = self.softening**2
-        result.parameters.stopping_conditions_number_of_steps = 2
-        result.stopping_conditions.number_of_steps_detection.enable()
-        result.parameters.max_size_timestep = self.delta_t/1000
+
+        # Set reasonable limits on the min/max timestep
+        # Gadget calculate timestep for individual particles as
+        # sqrt ( 2 eta epsilon / |a| ), where eta=ErrTolIntAccuracy=0.025
+        # (controlled /w result.parameters.timestep_accuracy_parameter in AMUSE),
+        # epsilon is the gravitational softening length, and |a| is
+        # abs of acceleration (vector). GADGET-1 had 5 timestep options, but
+        # GADGET2 reduced this to 1 b/c reasons, see Powers+ 2003, MNRAS, 338, 14
+        result.parameters.min_size_timestep = self.delta_t / 10000000
+        result.parameters.max_size_timestep = self.delta_t / 1000
+        print("\n\nmin_size_timestep: {} Myr\nmax_size_timestep: {} Myr\n\n".format(
+            result.parameters.min_size_timestep.value_in(units.Myr),
+            result.parameters.max_size_timestep.value_in(units.Myr)
+        ))
+
         result.parameters.time_max = 2*self.endtime
         result.particles.add_particles(self.amuse_sampled)
         return result
@@ -433,37 +463,32 @@ def integrate_Nbody_in_MWPotential2014_with_AMUSE(logger,
     i = int(time/tend * Nsteps)  # should be 0
     stars = do_something(stars, time, i)
 
-    try:
-        while time < tend:
-            # Evolve
-            print("gravity.evolve_model", time.as_quantity_in(units.Myr))
-            gravity.evolve_model( time+dt )
-            if (time+dt).value_in(units.Myr) % tsnap.value_in(units.Myr) < 1e-9:
-                print("SNAP")
+    while time < tend:
+        # Evolve
+        print("gravity.evolve_model", time.as_quantity_in(units.Myr))
+        gravity.evolve_model( time+dt )
+        if (time+dt).value_in(units.Myr) % tsnap.value_in(units.Myr) < 1e-9:
+            print("SNAP")
 
-                # Copy stars from gravity to output or analyze the simulation
-                print("channel_from_gravity_to_stars.copy()")
-                channel_from_gravity_to_stars.copy()
+            # Copy stars from gravity to output or analyze the simulation
+            print("channel_from_gravity_to_stars.copy()")
+            channel_from_gravity_to_stars.copy()
 
-                i = int((time+dt)/tend * Nsteps)
-                stars = do_something(stars, time+dt, i)
+            i = int((time+dt)/tend * Nsteps)
+            stars = do_something(stars, time+dt, i)
 
-                # If you edited the stars particle set, for example to remove stars from the
-                # array because they have been kicked far from the cluster, you need to
-                # copy the array back to gravity:
-                print("channel_from_stars_to_gravity.copy()")
-                channel_from_stars_to_gravity.copy()
+            # If you edited the stars particle set, for example to remove stars from the
+            # array because they have been kicked far from the cluster, you need to
+            # copy the array back to gravity:
+            print("channel_from_stars_to_gravity.copy()")
+            channel_from_stars_to_gravity.copy()
 
-            # Update time
-            time = gravity.model_time
-            # break
+        # Update time
+        time = gravity.model_time
+        # break
 
-        channel_from_gravity_to_stars.copy()
-        gravity.stop()
-    except Exception as e:
-        logger.error(e)
-        gravity.stop()
-        raise
+    channel_from_gravity_to_stars.copy()
+    gravity.stop()
 
 
 def plot_stars(stars, time, i, fname="test_"):
