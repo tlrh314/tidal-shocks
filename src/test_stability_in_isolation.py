@@ -40,9 +40,13 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
 
     com, comvel, Mtot, Ekin, Epot, Ltot, ptot = get_particle_properties(stars, w=None)
 
-    plot_fname = "{}{}_{}_{}_{}_{}_{}_{:04d}.png".format(obs.outdir, obs.gc_slug,
+    folder = "{}_{}_{}_{}_{}_{}".format(obs.gc_slug,
         model_name, "isolation" if isolation else "MWPotential2014", len(stars),
-        softening, seed, i
+        softening, seed
+    )
+    plot_fname = "{}{}/{}_{}_{}_{}_{}_{}".format(obs.outdir, folder, obs.gc_slug,
+        model_name, "isolation" if isolation else "MWPotential2014", len(stars),
+        softening, seed
     )
     fig = plot_SigmaR_vs_R(obs, limepy_model, stars,
         model_name=model_name, Tsnap=Tsnap, softening=softening,
@@ -50,7 +54,7 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
     ax = fig.axes[0]
     info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
     ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
-    sigmaR_vs_R_fname = plot_fname.replace(".png", "_SigmaR_vs_R.png")
+    sigmaR_vs_R_fname = plot_fname + "_SigmaR_vs_R_{:04d}.png".format(i)
     fig.savefig(sigmaR_vs_R_fname)
     print("  Saved: {0}".format(sigmaR_vs_R_fname))
     pyplot.close(fig)
@@ -62,7 +66,7 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
     ax = fig.axes[0]
     info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
     ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
-    diagnostics_fname = plot_fname.replace(".png", "_diagnostics.png")
+    diagnostics_fname = plot_fname + "_diagnostics_{:04d}.png".format(i)
     fig.savefig(diagnostics_fname)
     print("  Saved: {0}".format(diagnostics_fname))
     pyplot.close(fig)
@@ -73,7 +77,7 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
     ax = fig.axes[0]
     info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
     ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
-    timestep_fname = plot_fname.replace(".png", "_timesteps.png")
+    timestep_fname = plot_fname + "_timesteps_{:04d}.png".format(i)
     fig.savefig(timestep_fname)
     print("  Saved: {0}".format(timestep_fname))
     pyplot.close(fig)
@@ -99,8 +103,9 @@ def analyse_isolation(obs, model_name, Nstars, softening, seed,
             obs.sample_deBoer2019_bestfit_limepy(Nstars=Nstars, seed=seed)
     # END REMOVE
 
-    snap_base = "{}{}_{}_isolation_{}_{}_{}_*.h5".format(obs.outdir, obs.gc_slug,
-        model_name, Nstars, softening, seed)
+    folder = "{}_{}_isolation_{}_{}_{}".format(obs.gc_slug, model_name, Nstars, softening, seed)
+    snap_base = "{}{}/{}_{}_isolation_{}_{}_{}_*.h5".format(obs.outdir, folder,
+        obs.gc_slug, model_name, Nstars, softening, seed)
     snapshots = sorted(glob.glob(snap_base), key=lambda s:
         [ int(c) for c in re.split('(\d+)', s) if c.isdigit()]
     )
@@ -140,7 +145,9 @@ def analyse_isolation(obs, model_name, Nstars, softening, seed,
 
 
 def dump_snapshot(obs, sim, stars, time, i):
-    fname = "{}{}_{}_isolation_{}_{}_{}_{:04d}.h5".format(obs.outdir, obs.gc_slug,
+    folder = "{}_{}_isolation_{}_{}_{}".format(obs.gc_slug, sim.model_name, sim.Nstars,
+        sim.softening.value_in(units.parsec), sim.seed)
+    fname = "{}{}/{}_{}_isolation_{}_{}_{}_{:04d}.h5".format(obs.outdir, obs.gc_slug,
         sim.model_name, sim.Nstars, sim.softening.value_in(units.parsec), sim.seed, i
     )
     print("    Dumping snapshot: {0}".format(fname))
@@ -228,7 +235,9 @@ if __name__ == "__main__":
     analyse_isolation(obs, args.model_name, args.Nstars, args.softening, args.seed,
         rmin=1e-3, rmax=1e3, Nbins=256, smooth=False)
 
-    pngs = "{}{}_{}_{}_{}_{}_{}_%4d.png".format(obs.outdir, obs.gc_slug,
+    folder = "{}_{}_{}_{}_{}_{}".format(obs.gc_slug,
+        args.model_name, "isolation", args.Nstars, args.softening, args.seed)
+    pngs = "{}{}/{}_{}_{}_{}_{}_{}_%4d.png".format(obs.outdir, folder, obs.gc_slug,
         args.model_name, "isolation", args.Nstars, args.softening, args.seed)
     print(pngs)
     out = pngs.replace("_%4d.png", ".mp4")

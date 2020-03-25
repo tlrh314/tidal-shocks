@@ -214,11 +214,11 @@ def plot_histogram_of_timesteps(obs, stars, eta, dt_min, dt_max, Tsnap=None):
     timestep = (2*eta*stars.epsilon / a).sqrt().value_in(units.Myr)
 
     fig, ax = pyplot.subplots()
-    counts, edges = numpy.histogram(timestep, bins=int(numpy.sqrt(len(stars))))
+    counts, edges = numpy.histogram(numpy.log10(timestep), bins=int(numpy.sqrt(len(stars))))
     ax.plot((edges[1:]+edges[:-1])/2, counts, drawstyle="steps-mid", c="k")
     ax.axvline(dt_min, c="k", ls=":", lw=1)
     ax.axvline(dt_max, c="k", ls=":", lw=1)
-    ax.set_xlabel("Timestep [Myr]")
+    ax.set_xlabel("log10( Timestep [Myr] )")
     ax.set_ylabel("Count")
 
     if type(Tsnap) == float or type(Tsnap) == numpy.float64:
