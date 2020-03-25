@@ -9,6 +9,7 @@ import multiprocessing
 from functools import partial
 from matplotlib import pyplot
 pyplot.style.use("tlrh")
+# if "freya" in platform.node():
 pyplot.switch_backend("agg")
 from amuse.units import units
 from amuse.io import write_set_to_file
@@ -16,6 +17,8 @@ from amuse.io import read_set_from_file
 
 from amuse_wrapper import get_particle_properties
 from galpy_amuse_wrapper import plot_SigmaR_vs_R
+from galpy_amuse_wrapper import plot_diagnostics
+from galpy_amuse_wrapper import plot_histogram_of_timesteps
 
 
 BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
@@ -47,8 +50,32 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
     ax = fig.axes[0]
     info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
     ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
-    fig.savefig(plot_fname)
-    print("  Saved: {0}".format(plot_fname))
+    sigmaR_vs_R_fname = plot_fname.replace(".png", "_SigmaR_vs_R.png")
+    fig.savefig(sigmaR_vs_R_fname)
+    print("  Saved: {0}".format(sigmaR_vs_R_fname))
+    pyplot.close(fig)
+
+    # Check diagnostics
+    fig = plot_diagnostics(obs, limepy_model, stars, model_name=model_name,
+        Tsnap=Tsnap, softening=softening,
+    )
+    ax = fig.axes[0]
+    info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
+    ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
+    diagnostics_fname = plot_fname.replace(".png", "_diagnostics.png")
+    fig.savefig(diagnostics_fname)
+    print("  Saved: {0}".format(diagnostics_fname))
+    pyplot.close(fig)
+
+    # Check timesteps
+    dt_min, dt_max, eta = 0.0, 0.01, 0.025  # TODO
+    fig = plot_histogram_of_timesteps(obs, stars, eta, dt_min, dt_max, Tsnap=Tsnap)
+    ax = fig.axes[0]
+    info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
+    ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
+    timestep_fname = plot_fname.replace(".png", "_timesteps.png")
+    fig.savefig(timestep_fname)
+    print("  Saved: {0}".format(timestep_fname))
     pyplot.close(fig)
 
     return (Tsnap, com.value_in(units.parsec), comvel.value_in(units.km/units.s),

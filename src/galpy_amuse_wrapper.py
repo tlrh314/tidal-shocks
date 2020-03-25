@@ -10,8 +10,10 @@ import astropy.units as u
 from matplotlib import pyplot
 from matplotlib import gridspec
 from amuse.units import units
+from amuse.units import constants
 from amuse.units import nbody_system
 from amuse.datamodel import Particles
+from amuse.units import generic_unit_converter
 from amuse.datamodel import ParticlesWithUnitsConverted
 from amuse.ic.plummer import new_plummer_sphere
 from amuse.couple import bridge
@@ -35,64 +37,52 @@ from utils import parsec2arcmin
 
 def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
         Rinit=[0.0, 0.0, 0.0] | units.kpc,  # x, y, z in kpc
-        Vinit=[0.0, 0.0, 0.0] | units.km / units.s,  # vx, vy, vz in km / s
+        Vinit=[0.0, 0.0, 0.0] | (units.km / units.s),  # vx, vy, vz in km / s
         verbose=False, timing=True):
 
     start = time.time()
 
-    # Setup the Limepy model - CAUTION: do **not** scale here b/c we use the
-    # AMUSE converter later to scale the model from Nbody to physical units.
-    model = limepy.limepy(W0, g=g, M=1, rt=1, G=1, verbose=verbose)
+    # Setup a converter to pass to the AMUSE Nbody code
+    converter = generic_unit_converter.ConvertBetweenGenericAndSiUnits(
+        1 | units.MSun, 1 | units.parsec, 1 | units.Myr,
+    )
+    G = converter.to_nbody(constants.G).number
+
+    # Setup the Limepy model
+    model = limepy.limepy(W0, g=g, M=M, rt=rt, G=G, project=True, verbose=verbose)
     if timing:
         print("limepy.limepy took {0:.2f} s".format(time.time() - start))
 
-    # Sample the (unscaled) model using Limepy's built-in sample routine
+    # Nstars = int(M / 0.8)  # Assume all stars have a mass of 0.8 MSun
+
+    # Sample the model using Limepy's built-in sample routine
     start = time.time()
     particles = limepy.sample(model, N=Nstars, seed=seed, verbose=verbose)
     if timing:
         print("limepy.sample took {0:.2f} s".format(time.time() - start))
 
     # Move the Limepy particles into an AMUSE datamodel Particles instance
-    # Note that we use nbody units here and the AMUSE converter to scale afterwards
     start = time.time()
     amuse = Particles(size=Nstars)
-    amuse.x = particles.x | nbody_system.length
-    amuse.y = particles.y | nbody_system.length
-    amuse.z = particles.z | nbody_system.length
-    amuse.vx = particles.vx | nbody_system.length / nbody_system.time
-    amuse.vy = particles.vy | nbody_system.length / nbody_system.time
-    amuse.vz = particles.vz | nbody_system.length / nbody_system.time
-    amuse.mass = particles.m | nbody_system.mass
+    amuse.x = particles.x | units.parsec
+    amuse.y = particles.y | units.parsec
+    amuse.z = particles.z | units.parsec
+    amuse.vx = particles.vx | (units.km / units.s)
+    amuse.vy = particles.vy | (units.km / units.s)
+    amuse.vz = particles.vz | (units.km / units.s)
+    amuse.mass = particles.m | units.MSun
+    # Calculated by Gadget
+    amuse.radius = numpy.zeros(len(amuse)) | units.parsec
+    amuse.epsilon = numpy.zeros(len(amuse)) | units.parsec
+    amuse.ax = numpy.zeros(len(amuse)) | units.km / units.s**2
+    amuse.ay = numpy.zeros(len(amuse)) | units.km / units.s**2
+    amuse.az = numpy.zeros(len(amuse)) | units.km / units.s**2
 
     # Move particles to center of mass
-    amuse.move_to_center()
+    amuse.move_to_center()  # adjusts particles.position and particles.velocity
 
     if timing:
         print("convert to AMUSE took {0:.2f} s".format(time.time() - start))
-
-    print("\nlimepy_to_amuse, pre-converter business")
-    print("  G:         {}".format(nbody_system.G))
-    print("  com:       {}".format(amuse.center_of_mass()))
-    print("  comvel:    {}".format(amuse.center_of_mass_velocity()))
-    Mtot = amuse.total_mass()
-    print("  Mtot:      {}".format(Mtot))
-    Ekin = amuse.kinetic_energy()
-    print("  Ekin:      {}".format(Ekin))
-    Epot = amuse.potential_energy(G=nbody_system.G)
-    print("  Epot:      {}".format(Epot))
-    print("  Ekin/Epot: {}".format(Ekin/Epot))
-    Ltot = amuse.total_angular_momentum()
-    print("  Ltot:      {}".format(Ltot))
-    ptot = amuse.total_momentum()
-    print("  ptot:      {}".format(ptot))
-
-    # Setup the converter to pass to the AMUSE Nbody code
-    converter = nbody_system.nbody_to_si(M | units.MSun, rt | units.parsec)
-
-    # And apply the converter to scale the Nbody units to physical units. The
-    # converter can later be passed to the Nbody solver and we no longer need
-    # to worry about the physical units as that will be handled by AMUSE :-)
-    amuse = ParticlesWithUnitsConverted(amuse, converter.as_converter_from_si_to_nbody())
 
     # Finally, add the initial position and velocity vectors of the GC within the Galaxy
     amuse.x += Rinit[0]
@@ -102,12 +92,12 @@ def limepy_to_amuse(W0, M=1e5, rt=3.0, g=1, Nstars=1000, seed=1337,
     amuse.vy += Vinit[1]
     amuse.vz += Vinit[2]
 
-    print("\nlimepy_to_amuse, post-converter business")
-    get_particle_properties(amuse)
+    if verbose:
+        start = time.time()
+        get_particle_properties(amuse)
+        if timing:
+            print("get_particle_properties took {0:.2f} s".format(time.time() - start))
 
-    # Now let limepy scale the model because that's what we'll return
-    # and we kinda like the model to be in physical units. Also project :-).
-    model = limepy.limepy(W0, g=g, M=M, rt=rt, G=1, verbose=verbose, project=True)
     return model, particles, amuse, converter
 
 
@@ -165,6 +155,82 @@ def plot_SigmaR_vs_R(obs, limepy_model, amuse_sampled, model_name=None, Tsnap=No
     return fig
 
 
+def plot_diagnostics(obs, limepy_model, stars, model_name=None, Tsnap=None,
+        softening=None, rmin=1e-3, rmax=1e3, Nbins=None, fig=None):
+
+    if fig is None:
+        fig, ((ax1, ax2), (ax3, ax4)) = pyplot.subplots(2, 2, figsize=(24, 24))
+    else:
+        ax1, ax2, ax3, ax4 = fig.axes
+    Nbins = int(numpy.sqrt(len(stars))) if Nbins is None else Nbins
+
+    if type(Tsnap) == float or type(Tsnap) == numpy.float64:
+        suptitle = "{} at T={:<10.2f} Myr".format(obs.gc_name, Tsnap)
+    elif Tsnap == "ICs":
+        suptitle = "{} ICs".format(obs.gc_name)
+    else:
+        suptitle = "{}".format(obs.gc_name)
+    fig.suptitle(suptitle, fontsize=22)
+
+    # Observed projected star count profile of deBoer+ 2019
+    pyplot.sca(ax1)
+    obs.add_deBoer2019_to_fig(fig, show_King=True, convert_to_parsec=True)
+    obs.add_deBoer2019_sampled_to_ax(ax1, stars, parm="Sigma",
+        limepy_model=limepy_model, rmin=rmin, rmax=rmax, Nbins=Nbins)
+
+    # Observed projected velocity dispersion profile of Hilker+ 2019
+    pyplot.sca(ax2)
+    obs.add_H19_RVs_to_fig(fig)
+    obs.add_deBoer2019_sampled_to_ax(ax2, stars, parm="v2p",
+        limepy_model=limepy_model, rmin=rmin, rmax=rmax, Nbins=Nbins)
+
+    # Inferred density profile (not projected)
+    obs.add_deBoer2019_sampled_to_ax(ax3, stars, parm="rho",
+        limepy_model=limepy_model, rmin=rmin, rmax=rmax, Nbins=Nbins)
+
+    # Mass profile
+    obs.add_deBoer2019_sampled_to_ax(ax4, stars, parm="mc",
+        limepy_model=limepy_model, rmin=rmin, rmax=rmax, Nbins=Nbins)
+
+    for ax in fig.axes:
+        ax.set_xlim(rmin, rmax)
+
+        if softening is not None:
+            xlim = ax.get_xlim()
+            softening = parsec2arcmin(softening, obs.distance_kpc)
+            trans = matplotlib.transforms.blended_transform_factory(ax.transData, ax.transAxes)
+            ax.fill_between(numpy.arange(xlim[0], softening, 0.01), 0, 1,
+                facecolor="grey", edgecolor="grey", alpha=0.2, transform=trans)
+
+        ax.legend(loc="lower left", fontsize=20)
+
+    fig.suptitle("")
+    fig.tight_layout()
+    return fig
+
+
+def plot_histogram_of_timesteps(obs, stars, eta, dt_min, dt_max, Tsnap=None):
+    a = (stars.ax**2 + stars.ay**2 + stars.az**2).sqrt()
+    timestep = (2*eta*stars.epsilon / a).sqrt().value_in(units.Myr)
+
+    fig, ax = pyplot.subplots()
+    counts, edges = numpy.histogram(timestep, bins=int(numpy.sqrt(len(stars))))
+    ax.plot((edges[1:]+edges[:-1])/2, counts, drawstyle="steps-mid", c="k")
+    ax.axvline(dt_min, c="k", ls=":", lw=1)
+    ax.axvline(dt_max, c="k", ls=":", lw=1)
+    ax.set_xlabel("Timestep [Myr]")
+    ax.set_ylabel("Count")
+
+    if type(Tsnap) == float or type(Tsnap) == numpy.float64:
+        suptitle = "{} at T={:<10.2f} Myr".format(obs.gc_name, Tsnap)
+    elif Tsnap == "ICs":
+        suptitle = "{} ICs".format(obs.gc_name)
+    else:
+        suptitle = "{}".format(obs.gc_name)
+    fig.suptitle(suptitle, fontsize=22)
+    return fig
+
+
 class MwGcSimulation(object):
     def __init__(self, logger, obs, model_name, Nstars=1000, endtime=1000.0,
             Nsnapshots=100, code="fi", number_of_workers=4, softening=1.0, seed=-1,
@@ -182,7 +248,6 @@ class MwGcSimulation(object):
         self.softening = softening | units.parsec
         self.isolation = isolation
         self.seed = seed
-
 
         self.new_particles_cluster(obs)
         self.create_cluster_code(code)
@@ -222,11 +287,6 @@ class MwGcSimulation(object):
             self.limepy_model, limepy_sampled, self.amuse_sampled, self.converter = \
                 obs.sample_deBoer2019_bestfit_limepy(Nstars=self.Nstars, seed=self.seed)
 
-
-        self.amuse_sampled.scale_to_standard(self.converter)
-        print("\new_particles_cluster, post-scale_to_standard business")
-        get_particle_properties(self.amuse_sampled)
-
         # Verify that the sampled profile matches the observed profile (as well as
         # the requested Limepy model, of course)
         fname = "{}{}_{}_{}_{}_{}_{}_ICs.png".format(obs.outdir, obs.gc_slug,
@@ -251,7 +311,9 @@ class MwGcSimulation(object):
                 ))
 
                 # Copy stars from gravity to output or analyze the simulation
+                print(self.bridge.particles.sorted_by_attribute("key")[0:5])
                 self.channel_from_gravity_to_stars.copy()
+                print(self.amuse_sampled.sorted_by_attribute("key")[0:5])
 
                 # get_particle_properties(self.amuse_sampled, w="    ")
                 self.amuse_sampled = do_something(obs, self,
@@ -273,10 +335,18 @@ class MwGcSimulation(object):
         self.cluster_code.commit_particles()
 
         # Setup channels between stars particle dataset and the cluster code
+        # Cannot set attributes ['ax', 'ay', 'az', 'epsilon', 'radius']
         self.channel_from_stars_to_gravity = self.amuse_sampled.new_channel_to(
-            self.cluster_code.particles, attributes =["mass", "x", "y", "z", "vx", "vy", "vz"])
+            self.cluster_code.particles, attributes =[
+                "mass", "x", "y", "z", "vx", "vy", "vz",
+            ]
+        )
         self.channel_from_gravity_to_stars = self.cluster_code.particles.new_channel_to(
-            self.amuse_sampled, attributes =["mass", "x", "y", "z", "vx", "vy", "vz"])
+            self.amuse_sampled, attributes =[
+                "mass", "x", "y", "z", "vx", "vy", "vz",
+                "ax", "ay", "az", "epsilon", "radius"
+            ]
+        )
 
 
     def setup_bridge(self):
@@ -345,8 +415,40 @@ class MwGcSimulation(object):
         print("new_code_gadget2")
         from amuse.community.gadget2.interface import Gadget2
         result = Gadget2(unit_converter=self.converter,
-            number_of_workers=self.number_of_workers, redirection="null")
+            number_of_workers=self.number_of_workers, redirection="none"
+        )
         print("new_code_gadget2 --> result.state =", result.get_name_of_current_state())
+
+        # Gadget internal units
+        code_length_unit = result.parameters.code_length_unit.as_quantity_in(units.parsec)
+        code_mass_unit = result.parameters.code_mass_unit.as_quantity_in(units.MSun)
+        code_time_unit = result.parameters.code_time_unit.as_quantity_in(units.Myr)
+        code_velocity_unit = result.parameters.code_velocity_unit.as_quantity_in(units.km/units.s)
+        print("  code_length_unit: {}".format(code_length_unit))
+        print("  code_mass_unit: {}".format(code_mass_unit))
+        print("  code_time_unit: {}".format(code_time_unit))
+        print("  code_velocity_unit: {}".format(code_velocity_unit))
+
+        # Get Gadget internal timesteps
+        # Gadget calculate timestep for individual particles as
+        # sqrt ( 2 eta epsilon / |a| ), where eta=ErrTolIntAccuracy=0.025
+        # (controlled /w result.parameters.timestep_accuracy_parameter in AMUSE),
+        # epsilon is the gravitational softening length, and |a| is
+        # abs of acceleration (vector). GADGET-1 had 5 timestep options, but
+        # GADGET2 reduced this to 1 b/c reasons, see Powers+ 2003, MNRAS, 338, 14
+        self.dt_min = result.parameters.min_size_timestep.value_in(units.Myr)
+        self.dt_max = result.parameters.max_size_timestep.value_in(units.Myr)
+        self.eta = result.parameters.timestep_accuracy_parameter
+        print("\n  min_size_timestep: {} Myr\n  max_size_timestep: {} Myr".format(
+            self.dt_min, self.dt_max))
+        print("  timestep_accuracy_parameter: {}".format(self.eta))
+
+        result.parameters.time_max = 2*self.endtime
+        # TODO CPU max time
+        # result.parameters.time_max = 2*self.endtime
+
+        # Set softening
+        result.parameters.epsilon_squared = self.softening**2
 
         # Set the gadget_output_directory
         outdir = "{}{}_{}_{}_{}_{}_{}".format(self.outdir, self.gc_slug,
@@ -357,26 +459,7 @@ class MwGcSimulation(object):
             print("Created,", outdir)
             os.mkdir(outdir)
         result.parameters.gadget_output_directory = outdir
-        sjenkie = input("Press any key to continue")
 
-        # Set softening
-        result.parameters.epsilon_squared = self.softening**2
-
-        # Set reasonable limits on the min/max timestep
-        # Gadget calculate timestep for individual particles as
-        # sqrt ( 2 eta epsilon / |a| ), where eta=ErrTolIntAccuracy=0.025
-        # (controlled /w result.parameters.timestep_accuracy_parameter in AMUSE),
-        # epsilon is the gravitational softening length, and |a| is
-        # abs of acceleration (vector). GADGET-1 had 5 timestep options, but
-        # GADGET2 reduced this to 1 b/c reasons, see Powers+ 2003, MNRAS, 338, 14
-        result.parameters.min_size_timestep = self.delta_t / 10000000
-        result.parameters.max_size_timestep = self.delta_t / 1000
-        print("\n\nmin_size_timestep: {} Myr\nmax_size_timestep: {} Myr\n\n".format(
-            result.parameters.min_size_timestep.value_in(units.Myr),
-            result.parameters.max_size_timestep.value_in(units.Myr)
-        ))
-
-        result.parameters.time_max = 2*self.endtime
         result.particles.add_particles(self.amuse_sampled)
         return result
 

@@ -78,12 +78,22 @@ def get_radial_profiles(p, c=None, rmin=1e-3, rmax=1e3, Nbins=256, timing=False)
 
     if c is None:
         c = [0.0, 0.0, 0.0]
+    cv = p.center_of_mass_velocity().value_in(units.km/units.s)
 
     r = numpy.sqrt(
         (p.x.value_in(units.parsec) - c[0])**2 +
         (p.y.value_in(units.parsec) - c[1])**2 +
-        (p.z.value_in(units.parsec) - c[2])**2)
+        (p.z.value_in(units.parsec) - c[2])**2
+    )
     r_i = r.argsort()
+    mass_sorted = p.mass.value_in(units.MSun)[r_i]
+
+    v = numpy.sqrt(
+        (p.vx.value_in(units.km/units.s) - cv[0])**2 +
+        (p.vy.value_in(units.km/units.s) - cv[1])**2 +
+        (p.vz.value_in(units.km/units.s) - cv[2])**2
+    )
+    v_sorted = v[r_i]
 
     r_edges = numpy.logspace(numpy.log10(rmin), numpy.log10(rmax), Nbins+1)
     r_mid = 0.5 * (r_edges[1:] + r_edges[:-1])
@@ -93,17 +103,21 @@ def get_radial_profiles(p, c=None, rmin=1e-3, rmax=1e3, Nbins=256, timing=False)
 
     M_of_r = numpy.zeros(Nbins)
     rho_of_r = numpy.zeros(Nbins)
-    mass_sorted = p.mass.value_in(units.MSun)[r_i]
+    vel_disp = numpy.zeros(Nbins)
     for i in range(1, len(r_edges)-1):
         M_of_r[i] = ( mass_sorted[N_in_shell[i-1]:N_in_shell[i]].sum() )
         rho_of_r[i] = M_of_r[i]
+        if len(v_sorted[N_in_shell[i-1]:N_in_shell[i]]) > 0:
+            vel_disp[i] = ( v_sorted[N_in_shell[i-1]:N_in_shell[i]].std() )
+        else:
+            vel_disp[i] = numpy.nan
     rho_of_r = (rho_of_r / volume) | units.MSun/units.parsec**3
 
     if timing:
         print("get_radial_profiles took {0:.2f} s".format(time.time() - start))
 
     return r_mid | units.parsec, N_in_shell, M_of_r.cumsum() | units.MSun, \
-        rho_of_r, volume | units.parsec**-3
+        rho_of_r, volume | units.parsec**-3, vel_disp | units.km/units.s
 
 
 def project_amuse_profiles(radii, rho_of_r, timing=True):
@@ -308,7 +322,7 @@ if __name__ == "__main__":
     print_particleset_info(plummer, convert_nbody, "Plummer Sphere")
     a = 3*numpy.pi/16 | units.parsec  # b/c AMUSE default
 
-    radii, N_in_shell, M_below_r, rho_of_r, volume = \
+    radii, N_in_shell, M_below_r, rho_of_r, volume, vel_disp = \
         get_radial_profiles(plummer, rmin=rmin, rmax=rmax, Nbins=256)
 
     from plummer import add_plummer_radii_to_ax

@@ -23,14 +23,14 @@ gc_name=$*
 echo "Running isolation.sh for gc_name: ${gc_name}"
 export OMP_NUM_THREADS=8
 for seed in 1337; do
-    for N in 1000 10000; do
-        for softening in 10.0 1.0 0.1 0.01; do
-            for model in "king" "wilson" "limepy"; do
+    for N in 1000; do
+        for softening in 0.1 1.0 10 0.01; do
+            for model in "king"; do
                 echo $seed $N $softening $model
 
                 python src/test_stability_in_isolation.py -gc "${gc_name}" \
                     -m "$model" -N $N --softening $softening  \
-                    -t 1000 --Nsnap 100 -c "gadget2" --seed $seed -np 8
+                    -t 100 --Nsnap 100 -c "gadget2" --seed $seed -np 8
 
                 dir="${model}_isolation_${N}_${softening}_${seed}"
                 if [ ! -d "out/ngc104/ngc104_${dir}" ]; then 
@@ -39,9 +39,11 @@ for seed in 1337; do
                 for f in $(ls "out/ngc104/ngc104_${dir}_"*); do
                     mv $f "out/ngc104/ngc104_${dir}/"
                 done
-
-                mv _amuse_output_data/gadget2/output/*.txt "out/ngc104/ngc104_${dir}/"
+                break
             done
+            break
         done
+        break
     done
+    break
 done

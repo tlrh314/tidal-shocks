@@ -148,7 +148,7 @@ class MwGcObservation(object):
         ]
         self.deB19_stitched = deB19_stitched[self.gc_name]
 
-    def add_H19_RVs_to_fig(self, fig):
+    def add_H19_RVs_to_fig(self, fig, convert_to_parsec=True):
         # Radial velocity dispersion from 2018MNRAS.473.5591K
         rv_k18, = numpy.where(self.h19_rv["type"] == "K18")
         # Radial velocity dispersion from 2019MNRAS.482.5138B
@@ -160,7 +160,11 @@ class MwGcObservation(object):
         pm_h19, = numpy.where(self.h19_rv["type"] == "GDR2")
 
         ax = pyplot.gca()
-        all_radii = arcmin2parsec(self.h19_rv["radius"]/60, self.distance_kpc)
+        # H19 data has radii in arcsec
+        if convert_to_parsec:
+            all_radii = arcmin2parsec(self.h19_rv["radius"]/60, self.distance_kpc)
+        else:
+            all_radii = self.h19_rv["radius"]/60
         for cut, label, c in zip([rv_k18, rv_h19, pm_w15, pm_h19],
                 ["RV K18 (MUSE)", "RV H19", "PM W15 (HST)", "PM H19 (Gaia)"],
                 ["red", "blue", "green", "orange"]):
@@ -283,13 +287,14 @@ class MwGcObservation(object):
                 self.fit[model_name]["mcmc_err_down"].append(q[0])
                 self.fit[model_name]["mcmc_err_up"].append(q[1])
 
-    def add_deBoer2019_to_fig(self, fig,
+    def add_deBoer2019_to_fig(self, fig, convert_to_parsec=False,
             show_King=False, show_Wilson=False, show_limepy=False, show_spes=False,
             show_BGlev=True, show_rtie=True, show_rJ=True,
             has_tex=False, verbose=False):
         return plot_deBoer_2019(
             self.logger, self.deB19_fit, self.deB19_stitched,
             self.distance_kpc, self.rJ_pc, self.rJ, fig=fig,
+            convert_to_parsec=convert_to_parsec,
             show_King=show_King, show_Wilson=show_Wilson,
             show_limepy=show_limepy, show_spes=show_spes,
             show_BGlev=show_BGlev, show_rtie=show_rtie, show_rJ=show_rJ,
@@ -299,14 +304,14 @@ class MwGcObservation(object):
     def sample_deBoer2019_bestfit_king(self, Nstars=1337, seed=1337, verbose=False):
         W0_deB19 = self.deB19_fit["W_king"]
         M_deB19 = self.deB19_fit["M_king"]
-        rt_deB19 = parsec2arcmin(self.deB19_fit["rt_king"], self.distance_kpc)
+        rt_deB19 = self.deB19_fit["rt_king"]  # in parsec
         return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=1,
             Nstars=Nstars, seed=seed, verbose=verbose)
 
     def sample_deBoer2019_bestfit_wilson(self, Nstars=1337, seed=1337, verbose=False):
         W0_deB19 = self.deB19_fit["W_wil"]
         M_deB19 = self.deB19_fit["M_wil"]
-        rt_deB19 = parsec2arcmin(self.deB19_fit["rt_wil"], self.distance_kpc)
+        rt_deB19 = self.deB19_fit["rt_wil"]  # in parsec
         return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=2,
             Nstars=Nstars, seed=seed, verbose=verbose)
 
@@ -314,18 +319,18 @@ class MwGcObservation(object):
         W0_deB19 = self.deB19_fit["W_lime"]
         g_deB19 = self.deB19_fit["g_lime"]
         M_deB19 = self.deB19_fit["M_lime"]
-        rt_deB19 = parsec2arcmin(self.deB19_fit["rt_lime"], self.distance_kpc)
+        rt_deB19 = self.deB19_fit["rt_lime"]  # in parsec
         return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=g_deB19,
             Nstars=Nstars, seed=seed, verbose=verbose)
 
     def add_deBoer2019_sampled_to_ax(self, ax, sampled, parm="rho", limepy_model=None,
             rmin=1e-3, rmax=1e3, Nbins=256, smooth=False, timing=False):
-        if parm not in ["rho", "Sigma", "mc"]:
+        if parm not in ["rho", "Sigma", "mc", "v2p"]:
             self.logger.error("ERROR: cannot add parm '{}' to ax".format(parm))
             return
 
         start = time.time()
-        radii, N_in_shell, M_below_r, rho_of_r, volume = get_radial_profiles(
+        radii, N_in_shell, M_below_r, rho_of_r, volume, vel_disp = get_radial_profiles(
             sampled, c=sampled.center_of_mass().value_in(units.parsec),
             rmin=rmin, rmax=rmax, Nbins=Nbins, timing=timing)
         if timing:
@@ -337,9 +342,17 @@ class MwGcObservation(object):
             # if smooth:
             #     rho_plot = scipy.signal.savgol_filter(rho_of_r, 21, 2)
             ax.plot(radii.value_in(units.parsec), rho_plot,
-                c="r", lw=2, drawstyle="steps-mid", label=r"sampled $\rho(r)$"
+                c="magenta", lw=2, drawstyle="steps-mid", label=r"sampled $\rho(r)$"
             )
+            ax.set_xlim(0.9*radii.value_in(units.parsec).min(),
+                1.1*radii.value_in(units.parsec).max())
+            ax.set_ylim(0.2, 3*numpy.max(rho_plot))
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.set_xlabel("Radius [parsec]")
+            ax.set_ylabel("Density [MSun/parsec**3]")
         elif parm == "Sigma":
+            if limepy_model is not None: ax.plot(limepy_model.R, limepy_model.Sigma)
             R, Sigma = project_amuse_profiles(radii, rho_of_r, timing=timing)
             ax.plot(R, Sigma, c="magenta", lw=2,
                 drawstyle="steps-mid", label=r"sampled $\Sigma(R)$")
@@ -347,7 +360,7 @@ class MwGcObservation(object):
             if limepy_model is not None: ax.plot(limepy_model.r, limepy_model.mc)
             ax.plot(radii.value_in(units.parsec),
                 M_below_r.value_in(units.MSun),
-                c="r", lw=2, drawstyle="steps-mid", label=r"sampled $M(<r)$")
+                c="magenta", lw=2, drawstyle="steps-mid", label=r"sampled $M(<r)$")
             ax.set_xlim(0.9*radii.value_in(units.parsec).min(),
                 1.1*radii.value_in(units.parsec).max())
             ax.set_ylim(0.2, 3*numpy.max(M_below_r.value_in(units.MSun)))
@@ -355,6 +368,16 @@ class MwGcObservation(object):
             ax.set_yscale("log")
             ax.set_xlabel("Radius [parsec]")
             ax.set_ylabel("Mass (< r) [MSun]")
+        elif parm == "v2p":
+            ax.plot(radii.value_in(units.parsec),
+                vel_disp.value_in(units.km/units.s),
+                c="magenta", lw=2, drawstyle="steps-mid", label=r"sampled $M(<r)$")
+            if limepy_model is not None:
+                ax.plot(limepy_model.r, numpy.sqrt(limepy_model.v2p), label="sqrt v2p")
+                ax.plot(limepy_model.r, numpy.sqrt(limepy_model.v2)/3, label="sqrt v2/3")
+                ax.plot(limepy_model.r, (limepy_model.v2p), label="v2p")
+                ax.plot(limepy_model.r, (limepy_model.v2)/3, label="v2/3")
+                ax.legend(fontsize=20)
 
         # Add characteristic radii
         trans = matplotlib.transforms.blended_transform_factory(ax.transData, ax.transAxes)
