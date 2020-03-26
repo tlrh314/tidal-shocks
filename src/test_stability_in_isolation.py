@@ -148,7 +148,7 @@ def analyse_isolation(obs, model_name, Nstars, softening, seed,
 def dump_snapshot(obs, sim, stars, time, i):
     folder = "{}_{}_isolation_{}_{}_{}".format(obs.gc_slug, sim.model_name, sim.Nstars,
         sim.softening.value_in(units.parsec), sim.seed)
-    fname = "{}{}/{}_{}_isolation_{}_{}_{}_{:04d}.h5".format(obs.outdir, obs.gc_slug,
+    fname = "{}{}/{}_{}_isolation_{}_{}_{}_{:04d}.h5".format(obs.outdir, folder, obs.gc_slug,
         sim.model_name, sim.Nstars, sim.softening.value_in(units.parsec), sim.seed, i
     )
     print("    Dumping snapshot: {0}".format(fname))
