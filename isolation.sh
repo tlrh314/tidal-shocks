@@ -23,21 +23,21 @@
 if [[ $(hostname -s) = freya* ]]; then
     echo "Freya"
     setup_tidalshocks
-    set_interactive
+    # set_interactive
 fi
 
 gc_name=$*
 echo "Running isolation.sh for gc_name: ${gc_name}"
-export OMP_NUM_THREADS=8
-for seed in 1337; do
-    for N in 1000; do
+export OMP_NUM_THREADS=40
+for seed in 1337 1024 666; do
+    for N in 1000 10000 100000; do
         for softening in 0.1; do
-            for model in "king"; do
+            for model in "wilson" "limepy"; do
                 echo $seed $N $softening $model
 
                 python src/test_stability_in_isolation.py -gc "${gc_name}" \
                     -m "$model" -N $N --softening $softening  \
-                    -t 100 --Nsnap 100 -c "gadget2" --seed $seed -np 16
+                    -t 100 --Nsnap 100 -c "gadget2" --seed $seed -np 40
                 break
             done
             break

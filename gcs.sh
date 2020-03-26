@@ -23,6 +23,6 @@ gcs=(
 for gc in "${gcs[@]}"; do
     job="./isolation.sh ${gc}"
     echo "Submitting job: ${job}"
-    exec  $job
+    sbatch $job
     break
 done
