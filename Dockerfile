@@ -51,6 +51,7 @@ RUN set -ex && \
     && jupyter nbextension enable livemdpreview/livemdpreview \
 \
     && pip install \
+    mpi4py \
     amuse-bhtree==13.1.0 \
     amuse-fi==13.1.0 \
     amuse-framework==13.1.0 \

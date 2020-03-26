@@ -11,7 +11,6 @@ jupyter
 jupyter_contrib_nbextensions
 lxml
 matplotlib
-mpi4py 
 nose 
 numpy
 pandas
