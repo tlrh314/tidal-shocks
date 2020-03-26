@@ -70,6 +70,7 @@ RUN chown -R tidalshocks:tidalshocks /tidalshocks
 
 ENV SYSTYPE=Docker
 ENV HYDRA_HOST_FILE=/tidalshocks/hostfile_mpich2
+ENV OMPI_MCA_rmaps_base_oversubscribe=1
 USER tidalshocks
 
 ENTRYPOINT ["/tidalshocks/entrypoint.sh"]
