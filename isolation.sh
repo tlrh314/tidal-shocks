@@ -19,18 +19,25 @@
 # Wall clock limit:
 #SBATCH --time=24:00:00
 
+
+if [[ $(hostname -s) = freya* ]]; then
+    echo "Freya"
+    setup_tidalshocks
+    set_interactive
+fi
+
 gc_name=$*
 echo "Running isolation.sh for gc_name: ${gc_name}"
 export OMP_NUM_THREADS=8
 for seed in 1337; do
     for N in 1000; do
-        for softening in 0.1 1.0 10 0.01; do
+        for softening in 0.1; do
             for model in "king"; do
                 echo $seed $N $softening $model
 
                 python src/test_stability_in_isolation.py -gc "${gc_name}" \
                     -m "$model" -N $N --softening $softening  \
-                    -t 100 --Nsnap 100 -c "gadget2" --seed $seed -np 8
+                    -t 100 --Nsnap 100 -c "gadget2" --seed $seed -np 16
                 break
             done
             break

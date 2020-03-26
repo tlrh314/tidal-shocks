@@ -21,8 +21,8 @@ gcs=(
 )
 
 for gc in "${gcs[@]}"; do
-    job="./emcee.sh ${gc}"
+    job="./isolation.sh ${gc}"
     echo "Submitting job: ${job}"
-    exec $job
+    exec  $job
     break
 done
