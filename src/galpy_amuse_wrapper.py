@@ -216,8 +216,13 @@ def plot_histogram_of_timesteps(obs, stars, eta, dt_min, dt_max, Tsnap=None):
     fig, ax = pyplot.subplots()
     counts, edges = numpy.histogram(numpy.log10(timestep), bins=int(numpy.sqrt(len(stars))))
     ax.plot((edges[1:]+edges[:-1])/2, counts, drawstyle="steps-mid", c="k")
-    ax.axvline(dt_min, c="k", ls=":", lw=1)
-    ax.axvline(dt_max, c="k", ls=":", lw=1)
+    ZERO = 1e-9
+    if dt_min > ZERO:
+        ax.axvline(numpy.log10(dt_min), c="k", ls=":", lw=1)
+    else:
+        ax.axvline(numpy.log10(ZERO), c="k", ls=":", lw=1)
+    ax.axvline(numpy.log10(dt_max), c="k", ls=":", lw=1)
+    ax.set_xlim(0.1*numpy.log10(timestep).min(), 3*numpy.log10(timestep).max())
     ax.set_xlabel("log10( Timestep [Myr] )")
     ax.set_ylabel("Count")
 

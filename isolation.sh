@@ -31,14 +31,6 @@ for seed in 1337; do
                 python src/test_stability_in_isolation.py -gc "${gc_name}" \
                     -m "$model" -N $N --softening $softening  \
                     -t 100 --Nsnap 100 -c "gadget2" --seed $seed -np 8
-
-                dir="${model}_isolation_${N}_${softening}_${seed}"
-                if [ ! -d "out/ngc104/ngc104_${dir}" ]; then 
-                    mkdir "out/ngc104/ngc104_${dir}"
-                fi
-                for f in $(ls "out/ngc104/ngc104_${dir}_"*); do
-                    mv $f "out/ngc104/ngc104_${dir}/"
-                done
                 break
             done
             break

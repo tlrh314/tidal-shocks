@@ -72,15 +72,16 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
     pyplot.close(fig)
 
     # Check timesteps
-    dt_min, dt_max, eta = 0.0, 0.01, 0.025  # TODO
-    fig = plot_histogram_of_timesteps(obs, stars, eta, dt_min, dt_max, Tsnap=Tsnap)
-    ax = fig.axes[0]
-    info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
-    ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
-    timestep_fname = plot_fname + "_timesteps_{:04d}.png".format(i)
-    fig.savefig(timestep_fname)
-    print("  Saved: {0}".format(timestep_fname))
-    pyplot.close(fig)
+    if i > 0:  # b/c i=0 has ax=ay=az=0.0
+        dt_min, dt_max, eta = 0.0, 0.01, 0.025  # TODO
+        fig = plot_histogram_of_timesteps(obs, stars, eta, dt_min, dt_max, Tsnap=Tsnap)
+        ax = fig.axes[0]
+        info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
+        ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
+        timestep_fname = plot_fname + "_timesteps_{:04d}.png".format(i)
+        fig.savefig(timestep_fname)
+        print("  Saved: {0}".format(timestep_fname))
+        pyplot.close(fig)
 
     return (Tsnap, com.value_in(units.parsec), comvel.value_in(units.km/units.s),
         Mtot.value_in(units.MSun), Ekin.value_in(units.J), Epot.value_in(units.J),
@@ -226,22 +227,21 @@ if __name__ == "__main__":
     from galpy_amuse_wrapper import MwGcSimulation
 
     obs = MwGcObservation(logger, args.gc_name)
-    sim = MwGcSimulation(logger, obs, args.model_name, Nstars=args.Nstars,
-        endtime=args.endtime, Nsnapshots=args.Nsnapshots, code=args.code,
-        number_of_workers=args.number_of_workers, softening=args.softening,
-        isolation=True, seed=args.seed, do_something=dump_snapshot
-    )
+    # sim = MwGcSimulation(logger, obs, args.model_name, Nstars=args.Nstars,
+    #     endtime=args.endtime, Nsnapshots=args.Nsnapshots, code=args.code,
+    #     number_of_workers=args.number_of_workers, softening=args.softening,
+    #     isolation=True, seed=args.seed, do_something=dump_snapshot
+    # )
 
     analyse_isolation(obs, args.model_name, args.Nstars, args.softening, args.seed,
         rmin=1e-3, rmax=1e3, Nbins=256, smooth=False)
 
     folder = "{}_{}_{}_{}_{}_{}".format(obs.gc_slug,
         args.model_name, "isolation", args.Nstars, args.softening, args.seed)
-    pngs = "{}{}/{}_{}_{}_{}_{}_{}_%4d.png".format(obs.outdir, folder, obs.gc_slug,
-        args.model_name, "isolation", args.Nstars, args.softening, args.seed)
-    print(pngs)
-    out = pngs.replace("_%4d.png", ".mp4")
-    print(out)
-    ffmpeg = 'ffmpeg -y -r 3 -i "{}" {} -s "2000:2000" -an "{}"'.format(
-        pngs, "-profile:v high444 -level 4.1 -c:v libx264 -preset slow -crf 25", out)
-    os.system(ffmpeg)
+    for plot_fname in ["SigmaR_vs_R", "diagnostics", "timesteps"]:
+        pngs = "{}{}/{}_{}_{}_{}_{}_{}_{}_%4d.png".format(obs.outdir, folder, obs.gc_slug,
+            args.model_name, "isolation", args.Nstars, args.softening, args.seed, plot_fname)
+        out = pngs.replace("_%4d.png", ".mp4")
+        ffmpeg = 'ffmpeg -y -r 3 -i "{}" {} -s "2000:2000" -an "{}"'.format(
+            pngs, "-profile:v high444 -level 4.1 -c:v libx264 -preset slow -crf 25", out)
+        os.system(ffmpeg)
