@@ -419,8 +419,11 @@ class MwGcSimulation(object):
     def new_code_gadget2(self):
         print("new_code_gadget2")
         from amuse.community.gadget2.interface import Gadget2
-        result = Gadget2(unit_converter=self.converter,
-            number_of_workers=self.number_of_workers, redirection="none"
+        result = Gadget2(
+            unit_converter=self.converter,
+            number_of_workers=self.number_of_workers,
+            channel_type="sockets",
+            redirection="none"
         )
         print("new_code_gadget2 --> result.state =", result.get_name_of_current_state())
 
