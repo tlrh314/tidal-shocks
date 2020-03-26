@@ -227,11 +227,11 @@ if __name__ == "__main__":
     from galpy_amuse_wrapper import MwGcSimulation
 
     obs = MwGcObservation(logger, args.gc_name)
-    # sim = MwGcSimulation(logger, obs, args.model_name, Nstars=args.Nstars,
-    #     endtime=args.endtime, Nsnapshots=args.Nsnapshots, code=args.code,
-    #     number_of_workers=args.number_of_workers, softening=args.softening,
-    #     isolation=True, seed=args.seed, do_something=dump_snapshot
-    # )
+    sim = MwGcSimulation(logger, obs, args.model_name, Nstars=args.Nstars,
+        endtime=args.endtime, Nsnapshots=args.Nsnapshots, code=args.code,
+        number_of_workers=args.number_of_workers, softening=args.softening,
+        isolation=True, seed=args.seed, do_something=dump_snapshot
+    )
 
     analyse_isolation(obs, args.model_name, args.Nstars, args.softening, args.seed,
         rmin=1e-3, rmax=1e3, Nbins=256, smooth=False)
