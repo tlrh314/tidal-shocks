@@ -32,6 +32,7 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
     isolation = kwargs["isolation"]
     softening = kwargs["softening"]
     seed = kwargs["seed"]
+    must_plot = kwargs["must_plot"]
 
     print("  Loading snapshot {}: {}".format(i, fname))
     stars = read_set_from_file(fname, "hdf5")
@@ -48,31 +49,34 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
         model_name, "isolation" if isolation else "MWPotential2014", len(stars),
         softening, seed
     )
-    fig = plot_SigmaR_vs_R(obs, limepy_model, stars,
-        model_name=model_name, Tsnap=Tsnap, softening=softening,
-    )
-    ax = fig.axes[0]
-    info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
-    ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
-    sigmaR_vs_R_fname = plot_fname + "_SigmaR_vs_R_{:04d}.png".format(i)
-    fig.savefig(sigmaR_vs_R_fname)
-    print("  Saved: {0}".format(sigmaR_vs_R_fname))
-    pyplot.close(fig)
 
-    # Check diagnostics
-    fig = plot_diagnostics(obs, limepy_model, stars, model_name=model_name,
-        Tsnap=Tsnap, softening=softening,
-    )
-    ax = fig.axes[0]
-    info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
-    ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
-    diagnostics_fname = plot_fname + "_diagnostics_{:04d}.png".format(i)
-    fig.savefig(diagnostics_fname)
-    print("  Saved: {0}".format(diagnostics_fname))
-    pyplot.close(fig)
+    if must_plot:
+        fig = plot_SigmaR_vs_R(obs, limepy_model, stars,
+            model_name=model_name, Tsnap=Tsnap, softening=softening,
+        )
+        ax = fig.axes[0]
+        info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
+        ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
+        sigmaR_vs_R_fname = plot_fname + "_SigmaR_vs_R_{:04d}.png".format(i)
+        fig.savefig(sigmaR_vs_R_fname)
+        print("  Saved: {0}".format(sigmaR_vs_R_fname))
+        pyplot.close(fig)
+
+    if must_plot:
+        # Check diagnostics
+        fig = plot_diagnostics(obs, limepy_model, stars, model_name=model_name,
+            Tsnap=Tsnap, softening=softening,
+        )
+        ax = fig.axes[0]
+        info = "N={}, softening={:.2f}, seed={}".format(len(stars), softening, seed)
+        ax.text(0.01, 1.01, info, ha="left", va="bottom", transform=ax.transAxes, fontsize=16)
+        diagnostics_fname = plot_fname + "_diagnostics_{:04d}.png".format(i)
+        fig.savefig(diagnostics_fname)
+        print("  Saved: {0}".format(diagnostics_fname))
+        pyplot.close(fig)
 
     # Check timesteps
-    if i > 0:  # b/c i=0 has ax=ay=az=0.0
+    if i > 0 and must_plot:  # b/c i=0 has ax=ay=az=0.0
         dt_min, dt_max, eta = 0.0, 0.01, 0.025  # TODO
         fig = plot_histogram_of_timesteps(obs, stars, eta, dt_min, dt_max, Tsnap=Tsnap)
         ax = fig.axes[0]
@@ -90,7 +94,7 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
     )
 
 
-def analyse_isolation(obs, model_name, Nstars, softening, seed,
+def analyse_isolation(obs, model_name, Nstars, softening, seed, must_plot=True,
         rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
     # REMOVE b/c DRY violation and could result in inconsistency /w MwGcSimulation
     if model_name == "king":
@@ -118,7 +122,7 @@ def analyse_isolation(obs, model_name, Nstars, softening, seed,
         info = numpy.array(
             p.map(partial(analyse_snapshot, obs=obs, model_name=model_name,
                 limepy_model=limepy_model, softening=softening, seed=seed,
-                isolation=True),
+                must_plot=must_plot, isolation=True),
             enumerate(snapshots))
         )
 
@@ -131,18 +135,21 @@ def analyse_isolation(obs, model_name, Nstars, softening, seed,
     Ltot = info[:,6]
     ptot = info[:,7]
 
-    # Check energy
-    Ekin0, Epot0 = Ekin[0], Epot[0]
-    fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
-    ax.plot(Tsnap, 100*(Ekin-Ekin0)/Ekin0, label="Ekin")
-    ax.plot(Tsnap, 100*(Epot-Epot0)/Epot0, label="Epot")
-    ax.plot(Tsnap, 100*((Epot+Ekin) - (Epot0+Ekin0))/(Epot0+Ekin0), label="Ekin+Epot")
-    ax.axhline(0, ls=":", c="k", lw=1)
-    ax.set_xlabel("Time [ Myr ]")
-    ax.set_ylabel("Energy difference / Energy [ % ]")
-    ax.legend(loc="best", fontsize=16, frameon=False)
-    fname = snap_base.replace("*.h5", "energy.png")
-    pyplot.savefig(fname)
+    if must_plot:
+        # Check energy
+        Ekin0, Epot0 = Ekin[0], Epot[0]
+        fig, ax = pyplot.subplots(1, 1, figsize=(12, 9))
+        ax.plot(Tsnap, 100*(Ekin-Ekin0)/Ekin0, label="Ekin")
+        ax.plot(Tsnap, 100*(Epot-Epot0)/Epot0, label="Epot")
+        ax.plot(Tsnap, 100*((Epot+Ekin) - (Epot0+Ekin0))/(Epot0+Ekin0), label="Ekin+Epot")
+        ax.axhline(0, ls=":", c="k", lw=1)
+        ax.set_xlabel("Time [ Myr ]")
+        ax.set_ylabel("Energy difference / Energy [ % ]")
+        ax.legend(loc="best", fontsize=16, frameon=False)
+        fname = snap_base.replace("*.h5", "energy.png")
+        pyplot.savefig(fname)
+
+    return info
 
 
 def dump_snapshot(obs, sim, stars, time, i):
