@@ -96,16 +96,20 @@ def analyse_snapshot(i_fname_tuple, *args, **kwargs):
 
 def analyse_isolation(obs, model_name, Nstars, softening, seed, must_plot=True,
         rmin=1e-3, rmax=1e3, Nbins=256, smooth=False):
+
     # REMOVE b/c DRY violation and could result in inconsistency /w MwGcSimulation
-    if model_name == "king":
-        limepy_model, limepy_sampled, amuse_sampled, converter = \
-            obs.sample_deBoer2019_bestfit_king(Nstars=Nstars, seed=seed)
-    elif model_name == "wilson":
-        limepy_model, limepy_sampled, amuse_sampled, converter = \
-            obs.sample_deBoer2019_bestfit_wilson(Nstars=Nstars, seed=seed)
-    elif model_name == "limepy":
-        limepy_model, limepy_sampled, amuse_sampled, converter = \
-            obs.sample_deBoer2019_bestfit_limepy(Nstars=Nstars, seed=seed)
+    if must_plot:
+        if model_name == "king":
+            limepy_model, limepy_sampled, amuse_sampled, converter = \
+                obs.sample_deBoer2019_bestfit_king(Nstars=Nstars, seed=seed)
+        elif model_name == "wilson":
+            limepy_model, limepy_sampled, amuse_sampled, converter = \
+                obs.sample_deBoer2019_bestfit_wilson(Nstars=Nstars, seed=seed)
+        elif model_name == "limepy":
+            limepy_model, limepy_sampled, amuse_sampled, converter = \
+                obs.sample_deBoer2019_bestfit_limepy(Nstars=Nstars, seed=seed)
+    else:
+        limepy_model = None
     # END REMOVE
 
     folder = "{}_{}_isolation_{}_{}_{}".format(obs.gc_slug, model_name, Nstars, softening, seed)
