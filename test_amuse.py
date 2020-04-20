@@ -7,15 +7,13 @@ converter = generic_unit_converter.ConvertBetweenGenericAndSiUnits(
     1 | units.MSun, 1 | units.parsec, 1 | units.Myr
 )
 gravity = Gadget2(
-    channel_type="sockets",
+    debugger="strace",
     redirection="none",
-    number_of_workers=12,
+    number_of_workers=4,
     unit_converter=converter,
 )
-gravity.parameters.time_max = 10 | units.Gyr
-
 plummer = new_plummer_sphere(1000, convert_nbody=converter)
 gravity.particles.add_particles(plummer)
 
-gravity.evolve_model(1 | units.Gyr)
+gravity.evolve_model(1 | units.Myr)
 gravity.stop()
