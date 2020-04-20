@@ -18,7 +18,9 @@ if [[ $(hostname -s) = freya* ]]; then
 fi
 
 env >> env_in_sbatch_${SLURM_JOBID}
+echo "mpiexec python test_amuse.py"
 mpiexec python test_amuse.py
+echo "done with mpiexec python test_amuse.py"
 exit 0
 
 echo -e "\nRunning mpiexec /w mpi4py test w/o hostfile"
