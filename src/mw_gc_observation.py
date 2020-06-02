@@ -7,6 +7,9 @@ import platform
 import numpy
 import scipy
 from scipy import signal
+import astropy.units as u
+from galpy.orbit import Orbit
+from galpy.potential import MWPotential2014
 import matplotlib
 from matplotlib import pyplot
 from matplotlib.font_manager import FontProperties
@@ -395,6 +398,27 @@ class MwGcObservation(object):
                 # ax.axvline(r, c=c, ls="-", lw=2)
                 # ax.text(1.05*r, 0.98, "{0}: {1:.3f}".format(n, r), c=c, rotation=90,
                 #         fontsize=12, ha="left", va="top", transform=trans)  #, fontproperties=font)
+
+    def setup_galpy_orbit(self, ts=numpy.linspace(0.0, 1, 8096+1) * u.Gyr):
+        gc_name = self.h19_orbit["Cluster"]
+        RA = float(self.h19_orbit["RA"])
+        Dec = float(self.h19_orbit["DEC"])
+        R_Sun = float(self.h19_orbit["Rsun"])
+        v_r = float(self.h19_orbit["RV"])
+        pmRA = float(self.h19_orbit["mualpha"])
+        pmDec = float(self.h19_orbit["mu_delta"])
+        R_peri = float(self.h19_orbit["RPERI"])
+        R_apo = float(self.h19_orbit["RAP"])
+
+        o = Orbit([
+            RA*u.deg, Dec*u.deg, R_Sun*u.kpc,  # RA (deg), DEC (deg), d (kpc)
+            pmRA*u.mas/u.year, pmDec*u.mas/u.year,  # mu_ra (mas/yr), mu_dec (mas/yr)
+            v_r*u.km/u.s],  # radial velocity (km/s)
+            radec=True, uvw=False, lb=False  # explicit tell Orbit init which input method we use
+        )
+        o.integrate(ts, MWPotential2014)
+
+        return o
 
     def __str__(self):
         s = "MwGcObservation for {0}\n".format(self.gc_name)

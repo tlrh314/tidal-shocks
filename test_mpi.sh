@@ -7,19 +7,34 @@
 #SBATCH --ntasks-per-node=40
 #SBATCH --mail-type=all
 #SBATCH --mail-user=timoh@rzg.mpg.de
-#SBATCH --time=00:05:00
+#SBATCH --time=00:02:00
 
 set -e
+
+export PYTHONUNBUFFERED=1
+# export AMUSE_MPD_CHECK=0
+export I_MPI_DEBUG=10
  
 if [[ $(hostname -s) = freya* ]]; then
     echo "Freya"
-    setup_tidalshocks
+
+    if [ $(which conda) == "/u/timoh/conda-envs/tidalshocks/bin/conda" ]; then
+        echo "Conda env tidalshocks already loaded"
+    else 
+        echo "Loading Conda env tidalshocks"
+        setup_tidalshocks
+    fi
+
     # set_interactive
 fi
 
 env >> env_in_sbatch_${SLURM_JOBID}
-echo "mpiexec python test_amuse.py"
-mpiexec python test_amuse.py
+which mpiexec
+which python
+pwd
+# python -c "import mpi4py; print(mpi4py)"
+echo "python test_amuse.py"
+mpirun -n 1 python test_amuse.py
 echo "done with mpiexec python test_amuse.py"
 exit 0
 

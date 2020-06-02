@@ -183,14 +183,17 @@ def plot_diagnostics(obs, limepy_model, stars, model_name=None, Tsnap=None,
     obs.add_H19_RVs_to_fig(fig)
     obs.add_deBoer2019_sampled_to_ax(ax2, stars, parm="v2p",
         limepy_model=limepy_model, rmin=rmin, rmax=rmax, Nbins=Nbins)
+    ax2.set_ylim(0.5, 25)
 
     # Inferred density profile (not projected)
     obs.add_deBoer2019_sampled_to_ax(ax3, stars, parm="rho",
         limepy_model=limepy_model, rmin=rmin, rmax=rmax, Nbins=Nbins)
+    ax3.set_ylim(0.1, 1e5)
 
     # Mass profile
     obs.add_deBoer2019_sampled_to_ax(ax4, stars, parm="mc",
         limepy_model=limepy_model, rmin=rmin, rmax=rmax, Nbins=Nbins)
+    ax4.set_ylim(0.1, 3e5)
 
     for ax in fig.axes:
         ax.set_xlim(rmin, rmax)
@@ -422,8 +425,8 @@ class MwGcSimulation(object):
         result = Gadget2(
             unit_converter=self.converter,
             number_of_workers=self.number_of_workers,
-            channel_type="sockets",
             redirection="none"
+            debugger="strace",
         )
         print("new_code_gadget2 --> result.state =", result.get_name_of_current_state())
 

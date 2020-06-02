@@ -13,18 +13,18 @@ converter = generic_unit_converter.ConvertBetweenGenericAndSiUnits(
 )
 print("converter initialised")
 gravity = Gadget2(
-    debugger="strace",
+    # debugger="strace",
     redirection="none",
     number_of_workers=4,
     unit_converter=converter,
 )
-print("Gadget2 initialised")
-plummer = new_plummer_sphere(1000, convert_nbody=converter)
-print("new_plummer_sphere initialised")
-gravity.particles.add_particles(plummer)
-print("particles added to Gadget2")
-
-gravity.evolve_model(1 | units.Myr)
-print("evolve_model done")
-gravity.stop()
-print("Gadget2 stopped")
+# print("Gadget2 initialised")
+# plummer = new_plummer_sphere(1000, convert_nbody=converter)
+# print("new_plummer_sphere initialised")
+# gravity.particles.add_particles(plummer)
+# print("particles added to Gadget2")
+#
+# gravity.evolve_model(1 | units.Myr)
+# print("evolve_model done")
+# gravity.stop()
+# print("Gadget2 stopped")
