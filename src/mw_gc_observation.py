@@ -14,7 +14,6 @@ import matplotlib
 from matplotlib import pyplot
 from matplotlib.font_manager import FontProperties
 pyplot.style.use("tlrh")
-from amuse.units import units
 
 from limepy_wrapper import (
     king_wrapper,
@@ -28,13 +27,6 @@ from emcee_wrapper import (
     get_tau,
     get_flat_samples,
 )
-from amuse_wrapper import (
-    get_radial_profiles,
-    project_amuse_profiles,
-    scatter_particles_xyz,
-    print_particleset_info,
-)
-from galpy_amuse_wrapper import limepy_to_amuse
 
 BASEDIR = "/u/timoh/phd" if "freya" in platform.node() else ""
 if "/limepy" not in sys.path:
@@ -308,23 +300,26 @@ class MwGcObservation(object):
         W0_deB19 = self.deB19_fit["W_king"]
         M_deB19 = self.deB19_fit["M_king"]
         rt_deB19 = self.deB19_fit["rt_king"]  # in parsec
-        return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=1,
-            Nstars=Nstars, seed=seed, verbose=verbose)
+        raise NotImplementedError
+        # return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=1,
+        #     Nstars=Nstars, seed=seed, verbose=verbose)
 
     def sample_deBoer2019_bestfit_wilson(self, Nstars=1337, seed=1337, verbose=False):
         W0_deB19 = self.deB19_fit["W_wil"]
         M_deB19 = self.deB19_fit["M_wil"]
         rt_deB19 = self.deB19_fit["rt_wil"]  # in parsec
-        return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=2,
-            Nstars=Nstars, seed=seed, verbose=verbose)
+        raise NotImplementedError
+        # return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=2,
+        #     Nstars=Nstars, seed=seed, verbose=verbose)
 
     def sample_deBoer2019_bestfit_limepy(self, Nstars=1337, seed=1337, verbose=False):
         W0_deB19 = self.deB19_fit["W_lime"]
         g_deB19 = self.deB19_fit["g_lime"]
         M_deB19 = self.deB19_fit["M_lime"]
         rt_deB19 = self.deB19_fit["rt_lime"]  # in parsec
-        return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=g_deB19,
-            Nstars=Nstars, seed=seed, verbose=verbose)
+        raise NotImplementedError
+        # return limepy_to_amuse(W0_deB19, M=M_deB19, rt=rt_deB19, g=g_deB19,
+        #     Nstars=Nstars, seed=seed, verbose=verbose)
 
     def add_deBoer2019_sampled_to_ax(self, ax, sampled, parm="rho", limepy_model=None,
             rmin=1e-3, rmax=1e3, Nbins=256, smooth=False, timing=False):
@@ -356,9 +351,9 @@ class MwGcObservation(object):
             ax.set_ylabel("Density [MSun/parsec**3]")
         elif parm == "Sigma":
             if limepy_model is not None: ax.plot(limepy_model.R, limepy_model.Sigma)
-            R, Sigma = project_amuse_profiles(radii, rho_of_r, timing=timing)
-            ax.plot(R, Sigma, c="magenta", lw=2,
-                drawstyle="steps-mid", label=r"sampled $\Sigma(R)$")
+            # R, Sigma = project_amuse_profiles(radii, rho_of_r, timing=timing)
+            # ax.plot(R, Sigma, c="magenta", lw=2,
+            #     drawstyle="steps-mid", label=r"sampled $\Sigma(R)$")
         elif parm == "mc":
             if limepy_model is not None: ax.plot(limepy_model.r, limepy_model.mc)
             ax.plot(radii.value_in(units.parsec),
