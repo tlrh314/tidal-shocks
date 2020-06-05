@@ -13,6 +13,8 @@ services:
       - ../supaharris:/supaharris
       - ../supaharris-client:/supaharris-client
       - ../limepy:/limepy
+      - ../Gadget-2.0.7:/Gadget-2.0.7
+      - ../arepo-public:/arepo-public
       - /tmp/.X11-unix:/tmp/.X11-unix
     restart: unless-stopped
     command: ['jupyter', 'notebook', '--ip=0.0.0.0', '--port=8888', '--no-browser']
