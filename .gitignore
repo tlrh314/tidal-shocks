@@ -236,13 +236,4 @@ runs
 out
 *.mp4
 
-P-Gadget3
-
-data/
-inbins_meaning
-inking
-inlog
-input
-
 tjob.*
-_amuse_output_data/
