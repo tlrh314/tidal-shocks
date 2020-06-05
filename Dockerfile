@@ -11,7 +11,7 @@ RUN set -ex \
     # Install Build/Runtime dependencies ...
     && apt-get install -y --no-install-recommends \
 \
-        # ... for AMUSE (mpich)
+        # ... for Arepo
         build-essential gfortran python-dev \
         mpich libmpich-dev \
         libgsl-dev cmake libfftw3-3 libfftw3-dev libfftw3-mpi-dev \
@@ -50,15 +50,14 @@ RUN set -ex && \
     && jupyter nbextension enable toc2/main \
     && jupyter nbextension enable livemdpreview/livemdpreview \
 \
-    && pip install \
-    galpy==1.5.0
+    && pip install galpy==1.5.0
 
 
 COPY . /tidalshocks
 RUN chown -R tidalshocks:tidalshocks /tidalshocks
 
 ENV SYSTYPE=Docker
-ENV HYDRA_HOST_FILE=/tidalshocks/hostfile_mpich2
+ENV HYDRA_HOST_FILE=/tidalshocks/hostfile
 ENV OMPI_MCA_rmaps_base_oversubscribe=1
 USER tidalshocks
 
